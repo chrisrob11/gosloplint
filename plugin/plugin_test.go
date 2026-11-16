@@ -28,7 +28,7 @@ func TestRegisteredUnderItsName(t *testing.T) {
 }
 
 func TestNoSettingsEnablesEveryAnalyzer(t *testing.T) {
-	want := []string{"ctxthread", "emptyid", "emptyskip", "selfassert", "testhelper", "vocab"}
+	want := []string{"ctxthread", "emptyid", "emptyskip", "selfassert", "steer", "testhelper", "vocab"}
 	if got := names(t, build(t, nil)); !slices.Equal(got, want) {
 		t.Errorf("analyzers = %v, want %v", got, want)
 	}
@@ -36,7 +36,7 @@ func TestNoSettingsEnablesEveryAnalyzer(t *testing.T) {
 
 func TestDisable(t *testing.T) {
 	as := build(t, map[string]any{"disable": []any{"ctxthread", "vocab"}})
-	want := []string{"emptyid", "emptyskip", "selfassert", "testhelper"}
+	want := []string{"emptyid", "emptyskip", "selfassert", "steer", "testhelper"}
 	if got := names(t, as); !slices.Equal(got, want) {
 		t.Errorf("analyzers = %v, want %v", got, want)
 	}

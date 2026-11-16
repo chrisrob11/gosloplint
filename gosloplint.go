@@ -9,6 +9,7 @@ import (
 	"github.com/chrisrob11/gosloplint/emptyid"
 	"github.com/chrisrob11/gosloplint/emptyskip"
 	"github.com/chrisrob11/gosloplint/selfassert"
+	"github.com/chrisrob11/gosloplint/steer"
 	"github.com/chrisrob11/gosloplint/testhelper"
 	"github.com/chrisrob11/gosloplint/vocab"
 )
@@ -20,6 +21,7 @@ func Analyzers() []*analysis.Analyzer {
 		emptyid.Analyzer,
 		emptyskip.Analyzer,
 		selfassert.Analyzer,
+		steer.Analyzer,
 		testhelper.Analyzer,
 		vocab.Analyzer,
 	}
