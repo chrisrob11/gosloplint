@@ -20,3 +20,22 @@ func byTable(tableRef string) error {
 	}
 	return nil
 }
+
+// walk is reported by steer only when recursion-packages names slop.
+func walk(n int) int {
+	if n == 0 {
+		return 0
+	}
+	return walk(n - 1)
+}
+
+// nine is reported by comment under the default func limit of 8 lines.
+// two
+// three
+// four
+// five
+// six
+// seven
+// eight
+// nine
+func nine() {}

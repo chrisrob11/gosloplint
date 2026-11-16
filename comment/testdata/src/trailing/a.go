@@ -149,4 +149,3 @@ func T29() {
 	_ = 1 // why one
 	_ = 2 // why two
 }
-

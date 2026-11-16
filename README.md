@@ -70,12 +70,38 @@ compiled in, and `.golangci.yml` enables it like any other linter.
            type: module
            description: Reports AI slop that compiles and passes its tests.
            settings:
-             # Analyzers to turn off, by name. Default: none, so all six run.
+             # Analyzers to turn off, by name. Default: none, so all nine run.
              disable: [testhelper]
+             comment:
+               # Checks to turn off: length, density.
+               disable: [density]
+               # Per-kind block limits, in lines; an unset kind keeps its
+               # default (package 60, file 20, type 10, func 8, field 4,
+               # value 8, inline 3).
+               limits: {func: 12, inline: 4}
+               density: 25            # percent; default 20
+               density-min-lines: 200 # default 100
              emptyid:
                # Final name words that mark an ID; replaces the default
                # [id, ids, key, keys, name]. Each entry is one name word.
                suffixes: [id, ids, key, keys, name, ref]
+             fileplace:
+               # Rules to turn off, and off-by-default rules to turn on.
+               disable: [tiny]
+               enable: [typefile]
+               tiny-lines: 30    # default 40
+               long-lines: 2000  # default 1500
+               # Replaces the default grab-bag name parts.
+               grab-bag: [util, utils, helpers, misc]
+               # Per rule, import path patterns or file name globs it skips.
+               exempt:
+                 testname: [example.com/app/internal/sqltest/...]
+                 receiver: ["*_gen.go"]
+             steer:
+               # Checks to turn off.
+               disable: [returns-interface]
+               # Packages unguarded-recursion reads; default none.
+               recursion-packages: [example.com/app/parse/...]
              vocab:
                # Banned words; a word may have parts ("legacy client").
                # Default: none, so vocab reports nothing.
@@ -89,10 +115,13 @@ compiled in, and `.golangci.yml` enables it like any other linter.
    ```
 
 Every finding is reported under the `gosloplint` linter, its message
-prefixed with the analyzer's name. Every setting is optional. A misspelt or
-unknown field, an unknown analyzer in `disable`, a blank word, a suffix of
-more than one word (`user_id`), and settings for a disabled analyzer are
-errors when golangci-lint loads the configuration, not silently ignored.
+prefixed with the analyzer's name, and for steer, comment and fileplace,
+with the check's. Every setting is optional, and a zero number means its
+default. A misspelt or unknown field, an unknown analyzer, check or rule, a
+blank word, a suffix of more than one word (`user_id`), a negative or
+out-of-range number, a malformed exemption pattern, and settings for a
+disabled analyzer are errors when golangci-lint loads the configuration, not
+silently ignored.
 
 [`example/`](example) is a working setup that builds against this checkout;
 `make plugin-e2e` builds it and checks its findings against
@@ -177,6 +206,9 @@ Flags:
 - `-comment.density` (default 0, meaning 20): the ceiling, in percent.
 - `-comment.density-min-lines` (default 0, meaning 100): the package size,
   in non-blank lines, below which density is not checked.
+
+In golangci-lint they are `comment.disable`, `comment.limits.<kind>`,
+`comment.density` and `comment.density-min-lines`.
 
 ### ctxthread
 
@@ -376,6 +408,10 @@ Flags:
   test package too; or a file's base name, as a `path.Match` glob
   (`*_cases_test.go`).
 
+In golangci-lint they are `fileplace.disable`, `fileplace.enable`,
+`fileplace.tiny-lines`, `fileplace.long-lines`, `fileplace.grab-bag` and
+`fileplace.exempt`, a map from rule to a list of patterns.
+
 ### selfassert
 
 Reports, in `_test.go` files, an assertion that compares a value to itself and
@@ -494,6 +530,9 @@ Flags:
 - `-steer.recursion-packages` (default empty): comma-separated import path
   patterns in which `unguarded-recursion` runs; `...` matches any string, so
   `...` is every package and `example.com/app/parse/...` a subtree.
+
+In golangci-lint they are the `steer.disable` and `steer.recursion-packages`
+settings.
 
 ### testhelper
 

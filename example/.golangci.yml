@@ -11,11 +11,20 @@ linters:
         description: Reports AI slop that compiles and passes its tests.
         settings:
           disable: [testhelper]
+          comment:
+            limits:
+              inline: 3
           emptyid:
             suffixes: [id, ids, key, keys, name, ref]
+          fileplace:
+            enable: [typefile]
+          steer:
+            recursion-packages: ["..."]
           vocab:
             words: [legacy client]
 
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+  # steer can report several checks at one position.
+  uniq-by-line: false
