@@ -2,9 +2,15 @@
 // golang.org/x/tools/go/analysis Analyzer.
 package gosloplint
 
-import "golang.org/x/tools/go/analysis"
+import (
+	"golang.org/x/tools/go/analysis"
+
+	"github.com/chrisrob11/gosloplint/emptyskip"
+)
 
 // Analyzers returns every gosloplint analyzer.
 func Analyzers() []*analysis.Analyzer {
-	return []*analysis.Analyzer{}
+	return []*analysis.Analyzer{
+		emptyskip.Analyzer,
+	}
 }
