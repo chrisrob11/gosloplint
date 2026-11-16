@@ -35,23 +35,53 @@ import (
 	"github.com/chrisrob11/gosloplint/internal/camel"
 )
 
-// Analyzer reports silent guards on empty identifiers.
-var Analyzer = &analysis.Analyzer{
-	Name: "emptyid",
-	Doc:  "emptyid: report a guard on an empty ID whose body exits silently\n\nReports `if id == \"\" { return nil }` and its other spellings (len(x) == 0, a case \"\": clause, a guard joined with && or ||), when the body only returns nil, returns, or continues. What counts as an ID is set by -suffixes.",
-	URL:  "https://github.com/chrisrob11/gosloplint#emptyid",
-	Run:  run,
-}
+// Analyzer reports silent guards on empty identifiers. Its suffixes come from
+// the -suffixes flag; New builds one with explicit settings instead.
+var Analyzer = newAnalyzer(defaultSuffixes(), true)
 
 // DefaultSuffixes is the default value of the -suffixes flag.
 const DefaultSuffixes = "id,ids,key,keys,name"
 
-var suffixes = suffixList{}
+// Settings configures an Analyzer built by New.
+type Settings struct {
+	// Suffixes are the final name words that mark an identifier, matched
+	// case-insensitively. Empty means DefaultSuffixes.
+	Suffixes []string
+}
 
-func init() {
-	_ = suffixes.Set(DefaultSuffixes)
-	Analyzer.Flags.Var(&suffixes, "suffixes",
-		"comma-separated final name words that mark an identifier, matched case-insensitively")
+// New returns an emptyid Analyzer configured by s rather than by flags.
+func New(s Settings) *analysis.Analyzer {
+	list := defaultSuffixes()
+	if len(s.Suffixes) > 0 {
+		list = suffixList{}
+		for _, w := range s.Suffixes {
+			list.add(w)
+		}
+	}
+	return newAnalyzer(list, false)
+}
+
+func newAnalyzer(list suffixList, withFlag bool) *analysis.Analyzer {
+	a := &analysis.Analyzer{
+		Name: "emptyid",
+		Doc:  "emptyid: report a guard on an empty ID whose body exits silently\n\nReports `if id == \"\" { return nil }` and its other spellings (len(x) == 0, a case \"\": clause, a guard joined with && or ||), when the body only returns nil, returns, or continues. What counts as an ID is set by -suffixes.",
+		URL:  "https://github.com/chrisrob11/gosloplint#emptyid",
+	}
+	a.Run = func(pass *analysis.Pass) (any, error) {
+		(&checker{pass: pass, suffixes: list}).run()
+		return nil, nil
+	}
+	if withFlag {
+		a.Flags.Var(&list, "suffixes",
+			"comma-separated final name words that mark an identifier, matched case-insensitively")
+	}
+	return a
+}
+
+func defaultSuffixes() suffixList {
+	list := suffixList{}
+	_ = list.Set(DefaultSuffixes)
+	return list
 }
 
 // suffixList is a comma-separated flag value.
@@ -66,16 +96,27 @@ func (s *suffixList) String() string {
 }
 
 func (s *suffixList) Set(v string) error {
-	*s = suffixList{}
+	clear(*s)
 	for _, w := range strings.Split(v, ",") {
-		if w = strings.ToLower(strings.TrimSpace(w)); w != "" {
-			(*s)[w] = true
-		}
+		s.add(w)
 	}
 	return nil
 }
 
-func run(pass *analysis.Pass) (any, error) {
+func (s *suffixList) add(w string) {
+	if w = strings.ToLower(strings.TrimSpace(w)); w != "" {
+		(*s)[w] = true
+	}
+}
+
+// checker holds one pass and the suffixes it matches.
+type checker struct {
+	pass     *analysis.Pass
+	suffixes suffixList
+}
+
+func (c *checker) run() {
+	pass := c.pass
 	for _, file := range pass.Files {
 		if strings.HasSuffix(pass.Fset.File(file.Pos()).Name(), "_test.go") {
 			continue
@@ -83,47 +124,46 @@ func run(pass *analysis.Pass) (any, error) {
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch st := n.(type) {
 			case *ast.IfStmt:
-				checkIf(pass, st)
+				c.checkIf(st)
 			case *ast.SwitchStmt:
-				checkSwitch(pass, st)
+				c.checkSwitch(st)
 			}
 			return true
 		})
 	}
-	return nil, nil
 }
 
-func checkIf(pass *analysis.Pass, st *ast.IfStmt) {
+func (c *checker) checkIf(st *ast.IfStmt) {
 	// An else branch makes the guard a fork, not a silent skip.
 	if st.Else != nil {
 		return
 	}
-	name, ok := emptyGuard(pass, st.Cond)
+	name, ok := c.emptyGuard(st.Cond)
 	if !ok {
 		return
 	}
-	if exit, silent := silentExit(pass, st.Body.List); silent {
-		report(pass, st.Pos(), name, exit)
+	if exit, silent := silentExit(c.pass, st.Body.List); silent {
+		report(c.pass, st.Pos(), name, exit)
 	}
 }
 
 // checkSwitch reports the switch spelling of the same guard: a case "":
 // clause on a switch whose tag is an identifier.
-func checkSwitch(pass *analysis.Pass, sw *ast.SwitchStmt) {
+func (c *checker) checkSwitch(sw *ast.SwitchStmt) {
 	if sw.Tag == nil {
 		return
 	}
-	name, ok := subject(sw.Tag)
+	name, ok := c.subject(sw.Tag)
 	if !ok {
 		return
 	}
 	for _, cl := range sw.Body.List {
 		cc, ok := cl.(*ast.CaseClause)
-		if !ok || len(cc.List) != 1 || !isEmptyString(pass, cc.List[0]) {
+		if !ok || len(cc.List) != 1 || !isEmptyString(c.pass, cc.List[0]) {
 			continue
 		}
-		if exit, silent := silentExit(pass, cc.Body); silent {
-			report(pass, cc.Pos(), name, exit)
+		if exit, silent := silentExit(c.pass, cc.Body); silent {
+			report(c.pass, cc.Pos(), name, exit)
 		}
 	}
 }
@@ -134,19 +174,19 @@ func report(pass *analysis.Pass, pos token.Pos, name, exit string) {
 
 // emptyGuard reports whether cond tests an identifier for emptiness, either
 // alone or as one operand of && or ||, and returns the identifier's name.
-func emptyGuard(pass *analysis.Pass, cond ast.Expr) (string, bool) {
-	switch c := cond.(type) {
+func (c *checker) emptyGuard(cond ast.Expr) (string, bool) {
+	switch e := cond.(type) {
 	case *ast.ParenExpr:
-		return emptyGuard(pass, c.X)
+		return c.emptyGuard(e.X)
 	case *ast.BinaryExpr:
-		switch c.Op {
+		switch e.Op {
 		case token.LAND, token.LOR:
-			if name, ok := emptyGuard(pass, c.X); ok {
+			if name, ok := c.emptyGuard(e.X); ok {
 				return name, true
 			}
-			return emptyGuard(pass, c.Y)
+			return c.emptyGuard(e.Y)
 		case token.EQL:
-			return equalityGuard(pass, c)
+			return c.equalityGuard(e)
 		default:
 			return "", false
 		}
@@ -155,17 +195,18 @@ func emptyGuard(pass *analysis.Pass, cond ast.Expr) (string, bool) {
 }
 
 // equalityGuard reads x == "" and len(x) == 0, in either operand order.
-func equalityGuard(pass *analysis.Pass, bin *ast.BinaryExpr) (string, bool) {
+func (c *checker) equalityGuard(bin *ast.BinaryExpr) (string, bool) {
+	pass := c.pass
 	for _, pair := range [2][2]ast.Expr{{bin.X, bin.Y}, {bin.Y, bin.X}} {
 		subj, other := pair[0], pair[1]
 		switch {
 		case isEmptyString(pass, other):
-			if name, ok := subject(subj); ok {
+			if name, ok := c.subject(subj); ok {
 				return name, true
 			}
 		case isZero(pass, other):
 			if arg, ok := lenArg(pass, subj); ok {
-				if name, ok := subject(arg); ok {
+				if name, ok := c.subject(arg); ok {
 					return name, true
 				}
 			}
@@ -175,9 +216,9 @@ func equalityGuard(pass *analysis.Pass, bin *ast.BinaryExpr) (string, bool) {
 }
 
 // subject names e and reports whether that name looks like an identifier.
-func subject(e ast.Expr) (string, bool) {
+func (c *checker) subject(e ast.Expr) (string, bool) {
 	name, ok := exprName(e)
-	if !ok || !looksLikeIdentifier(name) {
+	if !ok || !c.looksLikeIdentifier(name) {
 		return "", false
 	}
 	return name, true
@@ -240,9 +281,9 @@ func exprName(e ast.Expr) (string, bool) {
 
 // looksLikeIdentifier reports whether the final word of name is one of the
 // configured suffixes.
-func looksLikeIdentifier(name string) bool {
+func (c *checker) looksLikeIdentifier(name string) bool {
 	words := camel.Words(name)
-	return len(words) > 0 && suffixes[strings.ToLower(words[len(words)-1])]
+	return len(words) > 0 && c.suffixes[strings.ToLower(words[len(words)-1])]
 }
 
 // silentExit reports whether body does nothing but leave. Statements before

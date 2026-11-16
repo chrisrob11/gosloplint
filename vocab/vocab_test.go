@@ -23,3 +23,12 @@ func TestWords(t *testing.T) {
 	})
 	analysistest.Run(t, analysistest.TestData(), vocab.Analyzer, "a")
 }
+
+func TestNewWithoutWordsReportsNothing(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), vocab.New(vocab.Settings{}), "unset")
+}
+
+func TestNewWords(t *testing.T) {
+	a := vocab.New(vocab.Settings{Words: []string{"age", "legacy client"}})
+	analysistest.Run(t, analysistest.TestData(), a, "a")
+}

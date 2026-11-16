@@ -1,0 +1,7 @@
+slop.go:12:2: ctxthread: context.Context stored in a struct: pass ctx as the first parameter of each call instead (gosloplint)
+slop.go:16:6: vocab: declares LegacyClient, which contains the banned word "legacy client" (gosloplint)
+slop.go:20:15: ctxthread: context.Background creates a context from nothing: take ctx from the caller (gosloplint)
+slop.go:25:2: emptyid: guard on empty userID exits silently (return nil): return an error or log, so a dropped ID is not reported as success (gosloplint)
+slop.go:33:2: emptyid: guard on empty tableRef exits silently (return nil): return an error or log, so a dropped ID is not reported as success (gosloplint)
+slop_test.go:6:2: emptyskip: TestSnapshotRead: test body is only a skip: it reports green and runs nothing (gosloplint)
+slop_test.go:11:5: selfassert: != compares err to itself (gosloplint)

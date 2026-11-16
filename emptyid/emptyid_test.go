@@ -28,3 +28,12 @@ func setFlag(t *testing.T, v string) {
 		}
 	})
 }
+
+func TestNewWithoutSuffixesUsesTheDefault(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), emptyid.New(emptyid.Settings{}), "a")
+}
+
+func TestNewSuffixes(t *testing.T) {
+	a := emptyid.New(emptyid.Settings{Suffixes: []string{"ref", " Prefix "}})
+	analysistest.Run(t, analysistest.TestData(), a, "custom")
+}

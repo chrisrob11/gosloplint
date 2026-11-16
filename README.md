@@ -7,8 +7,7 @@ an ID it needs is missing.
 
 Every check is a standard
 [`go/analysis`](https://pkg.go.dev/golang.org/x/tools/go/analysis) Analyzer,
-so it runs in the tools you already use: `go vet`, gopls, and (next)
-golangci-lint.
+so it runs in the tools you already use: `go vet`, gopls, and golangci-lint.
 
 ## Install
 
@@ -32,7 +31,72 @@ gosloplint ./...
 gosloplint -emptyskip ./...    # only the named analyzers
 ```
 
-golangci-lint plugin support is coming next. Until then, use `go vet`.
+### With golangci-lint
+
+gosloplint is a golangci-lint
+[module plugin](https://golangci-lint.run/docs/plugins/module-plugins/) named
+`gosloplint`: `golangci-lint custom` builds a golangci-lint binary with it
+compiled in, and `.golangci.yml` enables it like any other linter.
+
+1. Add a `.custom-gcl.yml` next to your `.golangci.yml`. Its top-level
+   `version` is the golangci-lint release to build; the plugin's `version`
+   must be a released gosloplint tag.
+
+   ```yaml
+   version: v2.12.2
+   name: custom-gcl
+   plugins:
+     - module: github.com/chrisrob11/gosloplint
+       import: github.com/chrisrob11/gosloplint/plugin
+       version: v0.1.0
+   ```
+
+2. Build the binary (it needs Go and git, and writes `./custom-gcl`):
+
+   ```sh
+   golangci-lint custom
+   ```
+
+3. Enable the plugin in `.golangci.yml`:
+
+   ```yaml
+   version: "2"
+   linters:
+     enable:
+       - gosloplint
+     settings:
+       custom:
+         gosloplint:
+           type: module
+           description: Reports AI slop that compiles and passes its tests.
+           settings:
+             # Analyzers to turn off, by name. Default: none, so all six run.
+             disable: [testhelper]
+             emptyid:
+               # Final name words that mark an ID; replaces the default
+               # [id, ids, key, keys, name]. Each entry is one name word.
+               suffixes: [id, ids, key, keys, name, ref]
+             vocab:
+               # Banned words; a word may have parts ("legacy client").
+               # Default: none, so vocab reports nothing.
+               words: [legacy client]
+   ```
+
+4. Run it in place of `golangci-lint`:
+
+   ```sh
+   ./custom-gcl run ./...
+   ```
+
+Every finding is reported under the `gosloplint` linter, its message
+prefixed with the analyzer's name. Every setting is optional. A misspelt or
+unknown field, an unknown analyzer in `disable`, a blank word, a suffix of
+more than one word (`user_id`), and settings for a disabled analyzer are
+errors when golangci-lint loads the configuration, not silently ignored.
+
+[`example/`](example) is a working setup that builds against this checkout;
+`make plugin-e2e` builds it and checks its findings against
+`example/want.txt`.
 
 ## Analyzers
 
@@ -118,6 +182,7 @@ Flags:
   name words that mark an identifier. Setting it replaces the default list.
   Add your own domain's addressing words, for example
   `-emptyid.suffixes=id,ids,key,ref,prefix,bucket`.
+  In golangci-lint it is the `emptyid.suffixes` setting.
 
 ### emptyskip
 
@@ -257,6 +322,7 @@ not done while its tests still use the old name.
 Flags:
 
 - `-vocab.words` (default empty): comma-separated banned words.
+  In golangci-lint it is the `vocab.words` setting.
 
 ## License
 

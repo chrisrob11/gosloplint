@@ -1,0 +1,10 @@
+# Builds ../bin/custom-gcl: golangci-lint with gosloplint compiled in.
+# `path` points at this checkout so the example tests the code beside it; a
+# real project uses `version: <tag>` instead (see the README).
+version: v2.12.2
+name: custom-gcl
+destination: ../bin
+plugins:
+  - module: github.com/chrisrob11/gosloplint
+    import: github.com/chrisrob11/gosloplint/plugin
+    path: ..
