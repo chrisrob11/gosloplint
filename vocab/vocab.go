@@ -23,19 +23,41 @@ import (
 	"github.com/chrisrob11/gosloplint/internal/camel"
 )
 
-// Analyzer reports identifiers that use a word set by -words.
-var Analyzer = &analysis.Analyzer{
-	Name: "vocab",
-	Doc:  "vocab: report identifiers that use a banned word\n\nReports every identifier containing one of the words set by -words, matched by whole camelCase or snake_case word. With no words configured it reports nothing.",
-	URL:  "https://github.com/chrisrob11/gosloplint#vocab",
-	Run:  run,
+// Analyzer reports identifiers that use a word set by -words; New builds one
+// with explicit settings instead.
+var Analyzer = newAnalyzer(&wordList{}, true)
+
+// Settings configures an Analyzer built by New.
+type Settings struct {
+	// Words are the banned words. A word may have parts ("legacy client" or
+	// LegacyClient). With none, the Analyzer reports nothing.
+	Words []string
 }
 
-var words wordList
+// New returns a vocab Analyzer configured by s rather than by flags.
+func New(s Settings) *analysis.Analyzer {
+	list := wordList{}
+	for _, w := range s.Words {
+		list.add(w)
+	}
+	return newAnalyzer(&list, false)
+}
 
-func init() {
-	Analyzer.Flags.Var(&words, "words",
-		`comma-separated banned words; a word may have parts ("legacy client" or LegacyClient)`)
+func newAnalyzer(words *wordList, withFlag bool) *analysis.Analyzer {
+	a := &analysis.Analyzer{
+		Name: "vocab",
+		Doc:  "vocab: report identifiers that use a banned word\n\nReports every identifier containing one of the words set by -words, matched by whole camelCase or snake_case word. With no words configured it reports nothing.",
+		URL:  "https://github.com/chrisrob11/gosloplint#vocab",
+	}
+	a.Run = func(pass *analysis.Pass) (any, error) {
+		run(pass, *words)
+		return nil, nil
+	}
+	if withFlag {
+		a.Flags.Var(words, "words",
+			`comma-separated banned words; a word may have parts ("legacy client" or LegacyClient)`)
+	}
+	return a
 }
 
 // wordList is a comma-separated flag value.
@@ -46,16 +68,20 @@ func (w *wordList) String() string { return strings.Join(*w, ",") }
 func (w *wordList) Set(v string) error {
 	*w = nil
 	for _, word := range strings.Split(v, ",") {
-		if word = strings.TrimSpace(word); word != "" {
-			*w = append(*w, word)
-		}
+		w.add(word)
 	}
 	return nil
 }
 
-func run(pass *analysis.Pass) (any, error) {
+func (w *wordList) add(word string) {
+	if word = strings.TrimSpace(word); word != "" {
+		*w = append(*w, word)
+	}
+}
+
+func run(pass *analysis.Pass, words wordList) {
 	if len(words) == 0 {
-		return nil, nil
+		return
 	}
 	for _, file := range pass.Files {
 		if ast.IsGenerated(file) {
@@ -80,5 +106,4 @@ func run(pass *analysis.Pass) (any, error) {
 			return true
 		})
 	}
-	return nil, nil
 }
