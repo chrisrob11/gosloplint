@@ -6,6 +6,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/chrisrob11/gosloplint/ctxthread"
+	"github.com/chrisrob11/gosloplint/emptyid"
 	"github.com/chrisrob11/gosloplint/emptyskip"
 	"github.com/chrisrob11/gosloplint/selfassert"
 	"github.com/chrisrob11/gosloplint/testhelper"
@@ -15,6 +16,7 @@ import (
 func Analyzers() []*analysis.Analyzer {
 	return []*analysis.Analyzer{
 		ctxthread.Analyzer,
+		emptyid.Analyzer,
 		emptyskip.Analyzer,
 		selfassert.Analyzer,
 		testhelper.Analyzer,
