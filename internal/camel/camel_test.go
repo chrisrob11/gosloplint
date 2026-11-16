@@ -26,3 +26,26 @@ func TestWords(t *testing.T) {
 		}
 	}
 }
+
+func TestHasWord(t *testing.T) {
+	cases := []struct {
+		name, word string
+		want       bool
+	}{
+		{"userAge", "age", true},
+		{"AGE", "age", true},
+		{"image", "age", false},
+		{"manager", "age", false},
+		{"pageSize", "age", false},
+		{"LegacyClientID", "legacy client", true},
+		{"LegacyClientID", "LegacyClient", true},
+		{"legacyServerClient", "legacy client", false},
+		{"legacy", "legacy client", false},
+		{"x", "", false},
+	}
+	for _, tc := range cases {
+		if got := HasWord(tc.name, tc.word); got != tc.want {
+			t.Errorf("HasWord(%q, %q) = %v, want %v", tc.name, tc.word, got, tc.want)
+		}
+	}
+}

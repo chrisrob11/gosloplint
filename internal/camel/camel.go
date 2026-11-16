@@ -39,6 +39,30 @@ func Words(name string) []string {
 	return words
 }
 
+// HasWord reports whether the words of word appear consecutively among the
+// words of name, compared case-insensitively. "identity" does not have the
+// word "entity"; "LegacyClientID" has the words "legacy client".
+func HasWord(name, word string) bool {
+	want := Words(strings.ReplaceAll(word, " ", "_"))
+	if len(want) == 0 {
+		return false
+	}
+	got := Words(name)
+	for i := 0; i+len(want) <= len(got); i++ {
+		matched := true
+		for j := range want {
+			if !strings.EqualFold(got[i+j], want[j]) {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
 // pluralAcronymTail reports whether runes[i] is the last letter of an acronym
 // followed by a plural s that ends the name or a word: the D in "IDs".
 func pluralAcronymTail(runes []rune, i int) bool {

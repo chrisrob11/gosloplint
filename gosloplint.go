@@ -10,6 +10,7 @@ import (
 	"github.com/chrisrob11/gosloplint/emptyskip"
 	"github.com/chrisrob11/gosloplint/selfassert"
 	"github.com/chrisrob11/gosloplint/testhelper"
+	"github.com/chrisrob11/gosloplint/vocab"
 )
 
 // Analyzers returns every gosloplint analyzer.
@@ -20,5 +21,6 @@ func Analyzers() []*analysis.Analyzer {
 		emptyskip.Analyzer,
 		selfassert.Analyzer,
 		testhelper.Analyzer,
+		vocab.Analyzer,
 	}
 }
