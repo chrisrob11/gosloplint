@@ -31,6 +31,76 @@ gosloplint ./...
 gosloplint -emptyskip ./...    # only the named analyzers
 ```
 
+### Copies across packages: `gosloplint dupl`
+
+Every check above is a per-package analyzer, so it fits the tools you
+already run. One check cannot be: a copy that spans two packages. An
+analysis pass sees one package, and facts flow only along import edges, so
+two packages that do not import each other never meet. `gosloplint dupl` is
+the one check that is not an analyzer: it loads the packages with
+`go/packages` and runs the [dupl](#dupl) analyzer's clone detector over all
+of them at once.
+
+```sh
+gosloplint dupl ./...
+gosloplint dupl -tests -min-nodes 80 ./internal/...
+```
+
+It prints each finding as `file:line:col: message`, with paths relative to
+the working directory, and exits 1 on findings, 0 when clean and 2 on an
+error. It takes the dupl flags, unprefixed: `-min-nodes`, `-min-statements`,
+`-tests` and `-exempt`. A copy within one package is reported both here and
+by the dupl analyzer. The package patterns default to `./...`.
+
+### Baseline: adopting gosloplint on existing code
+
+A baseline holds each package at the findings it has today, so a lint can
+gate new findings without fixing the old ones first. Write it with:
+
+```sh
+gosloplint baseline ./...                      # writes gosloplint-baseline.json
+gosloplint baseline -o lint/baseline.json -dupl.min-nodes=80 ./...
+```
+
+It runs every analyzer over the packages and their tests, configured by the
+same prefixed flags as the multichecker (pass the settings your lint runs
+with, or the counts will not match), and writes a sorted JSON object keyed by
+package import path, then by check: the analyzer's name, and for an analyzer
+of several checks, `analyzer:check`. Regenerating it from the same code
+writes the same file.
+
+```json
+{
+  "example.com/app/internal/store": {
+    "dupl": 2,
+    "fileplace:tiny": 1,
+    "steer:returns-interface": 3
+  }
+}
+```
+
+Then run with it:
+
+```sh
+gosloplint -baseline gosloplint-baseline.json ./...
+```
+
+For each package and check, an analyzer reports nothing while the package
+has no more findings of that check than the baseline records, and every one
+of them once it has more, each noting the baseline: `(3 dupl findings in this
+package, over its baseline of 2)`. It counts findings rather than naming
+them, so it survives edits that move code, and fixing one finding leaves
+room for a new one until the baseline is regenerated: regenerate it after
+each fix to ratchet it down. A package or check it does not list has a
+baseline of 0. A package and its test variant are held to one count, the
+larger. The path is relative to the working directory; under `go vet`, which
+runs the tool in each package's directory, give an absolute path.
+
+In golangci-lint it is the top-level `baseline` setting below. golangci-lint
+users can instead use its own
+[`issues.new-from-merge-base`](https://golangci-lint.run/docs/configuration/file/),
+which reports only the findings a branch adds, with no file to keep.
+
 ### With golangci-lint
 
 gosloplint is a golangci-lint
@@ -70,7 +140,10 @@ compiled in, and `.golangci.yml` enables it like any other linter.
            type: module
            description: Reports AI slop that compiles and passes its tests.
            settings:
-             # Analyzers to turn off, by name. Default: none, so all nine run.
+             # A file written by gosloplint baseline; see Baseline above.
+             # Default: none.
+             baseline: gosloplint-baseline.json
+             # Analyzers to turn off, by name. Default: none, so all ten run.
              disable: [testhelper]
              comment:
                # Checks to turn off: length, density.
@@ -81,6 +154,12 @@ compiled in, and `.golangci.yml` enables it like any other linter.
                limits: {func: 12, inline: 4}
                density: 25            # percent; default 20
                density-min-lines: 200 # default 100
+             dupl:
+               min-nodes: 80      # default 60
+               min-statements: 3  # default 1
+               tests: true        # default false
+               # Import path patterns or file name globs not read.
+               exempt: [example.com/app/internal/gen/..., "*_cases.go"]
              emptyid:
                # Final name words that mark an ID; replaces the default
                # [id, ids, key, keys, name]. Each entry is one name word.
@@ -117,7 +196,8 @@ compiled in, and `.golangci.yml` enables it like any other linter.
 Every finding is reported under the `gosloplint` linter, its message
 prefixed with the analyzer's name, and for steer, comment and fileplace,
 with the check's. Every setting is optional, and a zero number means its
-default. A misspelt or unknown field, an unknown analyzer, check or rule, a
+default. A missing or malformed baseline file, a misspelt or unknown field,
+an unknown analyzer, check or rule, a
 blank word, a suffix of more than one word (`user_id`), a negative or
 out-of-range number, a malformed exemption pattern, and settings for a
 disabled analyzer are errors when golangci-lint loads the configuration, not
@@ -246,6 +326,81 @@ resolved import, so an aliased import is still caught, and `Value` is matched
 on the `context.Context` method, so an unrelated `Value` method is not.
 
 Flags: none.
+
+### dupl
+
+Reports copied code within a package: two runs of statements with the same
+syntax tree shape, names and literal values aside, long enough that one
+function both call was the better choice. Generated code copies whole
+blocks where a person would have extracted a helper, and each copy then
+drifts on its own.
+
+```go
+// Bad: Monthly is Weekly with the names changed.
+func (t Totals) Weekly(days []int) int {
+	sum, peak := 0, 0
+	for _, d := range days {
+		// ...
+	}
+	return sum / peak
+}
+
+func (t Totals) Monthly(weeks []int) int {
+	total, top := 0, 0
+	for _, w := range weeks {
+		// ...
+	}
+	return total / top
+}
+
+// Good: one function, called twice.
+func (t Totals) Weekly(days []int) int   { return t.clampedMean(days) }
+func (t Totals) Monthly(weeks []int) int { return t.clampedMean(weeks) }
+```
+
+A clone is reported once per pair of functions, at the later occurrence (by
+file name, then line), naming the lines of the earlier one: `lines 31-48
+duplicate lines 8-25 of totals.go (Totals.Weekly)`. Each side's lines cover
+every run the pair shares.
+
+How code is compared: each statement is reduced to the sequence of its
+syntax node kinds, keeping every operator, assignment and branch token, and
+the kind of every literal, but no identifier name or literal value. So
+`a := x + 1` and `total := y + 2` match, while `a := x - 1`, `a = x + 1` and
+`a := x + "1"` do not. A run is consecutive statements of one block (a
+function body, a nested block, a closure, a `case` body) whose nodes reach
+the minimum; two runs match when their statement shapes are equal in order.
+
+Not reported: a composite literal, compared as one node whatever it holds,
+since two tables of one shape are data, not a decision made twice; a
+switch's or select's list of clauses, a dispatch table (each clause body is
+still compared on its own); a statement repeated in place, two overlapping
+runs of one block; generated files; `_test.go` files unless `tests` is set,
+since test tables and setup repeat by design. A function is exempted with a
+line in its doc comment, and the reason is required:
+
+```go
+//gosloplint:dupl-ok the two drivers must stay independent for the benchmark
+func (d *Driver) replay() { /* ... */ }
+```
+
+Scope: one package pass, so a copy between two packages is not seen; run
+[`gosloplint dupl`](#copies-across-packages-gosloplint-dupl) for those.
+
+Flags:
+
+- `-dupl.min-nodes` (default 0, meaning 60): the size a run must reach, in
+  syntax nodes, about fifteen lines of ordinary Go. Below 60, route tables
+  and repeated setup calls start to match.
+- `-dupl.min-statements` (default 0, meaning 1): the length a run must reach,
+  in statements.
+- `-dupl.tests` (default false): read `_test.go` files too.
+- `-dupl.exempt` (default empty): comma-separated patterns of what is not
+  read: a package's import path, `...` matching any string, which covers its
+  external test package too; or a file's base name, as a `path.Match` glob.
+
+In golangci-lint they are `dupl.min-nodes`, `dupl.min-statements`,
+`dupl.tests` and `dupl.exempt`, a list.
 
 ### emptyid
 

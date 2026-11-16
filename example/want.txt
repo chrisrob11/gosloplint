@@ -13,3 +13,4 @@ slop.go:61:2: comment: length: inline comment is 4 lines, limit 3: shorten it, o
 slop.go:74:6: steer: unguarded-recursion: size recurses with no depth bound: a stack overflow is fatal and cannot be recovered. Thread a depth parameter and return an error past a limit before descending (gosloplint)
 slop_test.go:6:2: emptyskip: TestSnapshotRead: test body is only a skip: it reports green and runs nothing (gosloplint)
 slop_test.go:11:5: selfassert: != compares err to itself (gosloplint)
+totals.go:31:2: dupl: lines 31-48 duplicate lines 8-25 of totals.go (Totals.Weekly): move the shared statements into one function both call (gosloplint)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/chrisrob11/gosloplint/comment"
 	"github.com/chrisrob11/gosloplint/ctxthread"
+	"github.com/chrisrob11/gosloplint/dupl"
 	"github.com/chrisrob11/gosloplint/emptyid"
 	"github.com/chrisrob11/gosloplint/emptyskip"
 	"github.com/chrisrob11/gosloplint/fileplace"
@@ -21,6 +22,7 @@ func Analyzers() []*analysis.Analyzer {
 	return []*analysis.Analyzer{
 		comment.Analyzer,
 		ctxthread.Analyzer,
+		dupl.Analyzer,
 		emptyid.Analyzer,
 		emptyskip.Analyzer,
 		fileplace.Analyzer,
