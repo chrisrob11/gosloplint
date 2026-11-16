@@ -1,0 +1,19 @@
+# Only the root module is watched. example/ is a separate module with no
+# requirements; the golangci-lint version plugin-e2e builds is pinned in
+# example/.custom-gcl.yml and ci.yml, which Dependabot does not manage.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      gomod-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
