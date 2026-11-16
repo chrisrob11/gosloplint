@@ -1,0 +1,4 @@
+/gosloplint
+/bin/
+/dist/
+coverage.out
