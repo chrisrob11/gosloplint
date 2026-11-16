@@ -22,3 +22,10 @@ func mustQuery(t *testing.T) int {
 }
 
 var _ = mustQuery
+
+// TestTwiceLogs only logs a wrong result, so it cannot fail.
+func TestTwiceLogs(t *testing.T) {
+	if got := twice(3); got != 6 {
+		t.Logf("twice(3) = %d, want 6", got)
+	}
+}

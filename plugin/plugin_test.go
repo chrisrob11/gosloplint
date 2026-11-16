@@ -77,6 +77,11 @@ func TestBadSettingsAreErrors(t *testing.T) {
 		{"unknown dupl field", map[string]any{"dupl": map[string]any{"min_nodes": 9}}, `unknown field "min_nodes"`},
 		{"dupl for disabled dupl", map[string]any{"disable": []any{"dupl"}, "dupl": map[string]any{"tests": true}}, "dupl settings are set but dupl is disabled"},
 		{"missing baseline", map[string]any{"baseline": "testdata/missing.json"}, "baseline: open testdata/missing.json"},
+		{"unknown cannotfail check", map[string]any{"cannotfail": map[string]any{"disable": []any{"no-asserts"}}}, `cannotfail.disable[0]: unknown check "no-asserts"`},
+		{"enable a cannotfail check that is on", map[string]any{"cannotfail": map[string]any{"enable": []any{"no-assert"}}}, `cannotfail.enable[0]: "no-assert" is not a check that is off by default`},
+		{"blank assert func", map[string]any{"cannotfail": map[string]any{"assert-funcs": []any{""}}}, "cannotfail.assert-funcs[0]: empty entry"},
+		{"unknown cannotfail field", map[string]any{"cannotfail": map[string]any{"assert_funcs": []any{"x"}}}, `unknown field "assert_funcs"`},
+		{"cannotfail for disabled cannotfail", map[string]any{"disable": []any{"cannotfail"}, "cannotfail": map[string]any{"enable": []any{"empty-loop"}}}, "cannotfail settings are set but cannotfail is disabled"},
 		{"fileplace for disabled fileplace", map[string]any{"disable": []any{"fileplace"}, "fileplace": map[string]any{"long-lines": 900}}, "fileplace settings are set but fileplace is disabled"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -163,6 +168,29 @@ func TestDuplSettingsReachTheAnalyzer(t *testing.T) {
 	}
 }
 
+func TestCannotfailSettingsReachTheAnalyzer(t *testing.T) {
+	const nothing, viaCheck = "no-assert: TestNothing calls no", "no-assert: TestViaCheck calls no"
+	const rows = "empty-loop: every assertion here is inside this range over got"
+	for _, tc := range []struct {
+		settings map[string]any
+		want     []string
+	}{
+		{nil, []string{nothing, viaCheck}},
+		{map[string]any{"assert-funcs": []any{"tests.check"}}, []string{nothing}},
+		{map[string]any{"enable": []any{"empty-loop"}}, []string{nothing, viaCheck, rows}},
+		{map[string]any{"disable": []any{"no-assert"}}, nil},
+	} {
+		got := findingsIn(t, map[string]any{"cannotfail": tc.settings}, "cannotfail", "tests")
+		ok := len(got) == len(tc.want)
+		for i := 0; ok && i < len(got); i++ {
+			ok = strings.HasPrefix(got[i], tc.want[i])
+		}
+		if !ok {
+			t.Errorf("cannotfail %v: findings = %q, want %q", tc.settings, got, tc.want)
+		}
+	}
+}
+
 func TestBaselineHoldsEveryAnalyzer(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "baseline.json")
 	write := func(content string) {
@@ -236,7 +264,7 @@ func findingsIn(t *testing.T, settings any, name, pkg string) []string {
 	if i < 0 {
 		t.Fatalf("%s not built", name)
 	}
-	// slop has no want comments, so analysistest calls every finding
+	// The fixtures have no want comments, so analysistest calls every finding
 	// unexpected; rec keeps those out of t and the findings are read from
 	// the results instead.
 	var rec recorder
