@@ -6,7 +6,9 @@ GOLANGCI_LINT ?= golangci-lint
 # lower it to pass.
 COVER_FLOOR ?= 93
 
-.PHONY: build test cover cover-check lint fmt fmt-check ci install plugin-e2e
+GORELEASER ?= go run github.com/goreleaser/goreleaser/v2@latest
+
+.PHONY: build test cover cover-check lint fmt fmt-check ci install plugin-e2e release-check
 
 build:
 	go build -o bin/gosloplint ./cmd/gosloplint
@@ -50,3 +52,7 @@ plugin-e2e:
 	@cd example && { ../bin/custom-gcl run --output.text.print-issued-lines=false --show-stats=false ./... > ../bin/plugin-e2e.txt; status=$$?; \
 	  if [ $$status -ne 1 ]; then cat ../bin/plugin-e2e.txt; echo "custom-gcl exited $$status, want 1 (issues found)"; exit 1; fi; }
 	@diff -u example/want.txt bin/plugin-e2e.txt && cat bin/plugin-e2e.txt && echo "plugin-e2e: findings match example/want.txt"
+
+# release-check validates .goreleaser.yaml without building or publishing.
+release-check:
+	$(GORELEASER) check
