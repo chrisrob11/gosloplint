@@ -22,7 +22,7 @@ jobs:
           install-only: true
       - run: make fmt-check
       - run: make lint
-      - run: make test
+      - run: make cover-check
       - run: make build
 
   plugin-e2e:

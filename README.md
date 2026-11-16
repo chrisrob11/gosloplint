@@ -753,6 +753,25 @@ Flags:
 - `-vocab.words` (default empty): comma-separated banned words.
   In golangci-lint it is the `vocab.words` setting.
 
+## Releases
+
+Each `vX.Y.Z` tag publishes a
+[GitHub release](https://github.com/chrisrob11/gosloplint/releases) with
+`gosloplint` binaries for darwin and linux (amd64 and arm64), as tar.gz
+archives with a `checksums.txt`, and a changelog. `go install ...@latest` and
+the golangci-lint plugin's `version` take the same tags.
+
+## Development
+
+```sh
+make ci          # fmt-check, lint, tests with a coverage floor, build: what the ci job runs
+make plugin-e2e  # golangci-lint with the plugin built in, checked against example/want.txt
+```
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers adding an analyzer, commits, pull
+requests and releasing. Report a vulnerability privately as
+[SECURITY.md](SECURITY.md) describes, not in an issue.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
