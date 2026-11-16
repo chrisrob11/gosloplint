@@ -8,6 +8,7 @@ import (
 	"github.com/chrisrob11/gosloplint/ctxthread"
 	"github.com/chrisrob11/gosloplint/emptyskip"
 	"github.com/chrisrob11/gosloplint/selfassert"
+	"github.com/chrisrob11/gosloplint/testhelper"
 )
 
 // Analyzers returns every gosloplint analyzer.
@@ -16,5 +17,6 @@ func Analyzers() []*analysis.Analyzer {
 		ctxthread.Analyzer,
 		emptyskip.Analyzer,
 		selfassert.Analyzer,
+		testhelper.Analyzer,
 	}
 }
