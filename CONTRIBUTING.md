@@ -72,6 +72,8 @@ Before tagging:
 - The README's golangci-lint `.custom-gcl.yml` snippet pins the plugin to a gosloplint tag
   (`version: v0.1.0`). Bump it to the tag you are about to push, in the same PR as anything
   else the release needs.
-- `make release-check` validates `.goreleaser.yaml`, and
-  `go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean` builds the
-  archives into `dist/` without publishing (delete `dist/` afterwards).
+- `make release-check` validates `.goreleaser.yaml`, and `make release-snapshot` builds the
+  archives into `dist/` without publishing (delete `dist/` afterwards). Both run GoReleaser
+  through `go run` at the version `GORELEASER_VERSION` in the Makefile pins, one whose `go.mod`
+  needs no newer Go than `mise.toml`'s, with `GOTOOLCHAIN=local` so a mismatch fails instead of
+  downloading a toolchain. When you bump Go, bump it too (`@latest` once needed go 1.27.4).
