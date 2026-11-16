@@ -1,6 +1,7 @@
 package gosloplint_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -24,5 +25,26 @@ func TestAnalyzersAreValidAndDocumented(t *testing.T) {
 		if !strings.HasPrefix(a.Doc, a.Name+":") {
 			t.Errorf("%s: Doc should start with %q", a.Name, a.Name+":")
 		}
+	}
+}
+
+func TestChecksNamesEveryAnalyzer(t *testing.T) {
+	checks := gosloplint.Checks()
+	for _, a := range gosloplint.Analyzers() {
+		if _, ok := checks[a.Name]; !ok {
+			t.Errorf("Checks has no entry for %s", a.Name)
+		}
+	}
+	if len(checks) != len(gosloplint.Analyzers()) {
+		t.Errorf("Checks has %d entries for %d analyzers", len(checks), len(gosloplint.Analyzers()))
+	}
+	for name, want := range map[string]string{"comment": "density", "fileplace": "testname", "steer": "returns-interface"} {
+		if !slices.Contains(checks[name], want) {
+			t.Errorf("Checks()[%s] = %v, want it to hold %s", name, checks[name], want)
+		}
+	}
+	checks["steer"][0] = "changed"
+	if gosloplint.Checks()["steer"][0] == "changed" {
+		t.Error("Checks shares its slices with the analyzers' packages")
 	}
 }

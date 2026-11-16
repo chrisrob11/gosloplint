@@ -214,9 +214,22 @@ func names(t *testing.T, as []*analysis.Analyzer) []string {
 	return out
 }
 
+func TestIgnoreDirectivesReachEveryAnalyzer(t *testing.T) {
+	got := findingsIn(t, nil, "emptyid", "ignored")
+	want := []string{"ignore: //gosloplint:ignore emptyid suppresses no emptyid finding: delete it"}
+	if !slices.Equal(got, want) {
+		t.Errorf("emptyid over ignored: findings = %q, want %q", got, want)
+	}
+}
+
 // findings runs the analyzer named by name, built from settings, over
 // testdata/src/slop and returns its diagnostic messages.
 func findings(t *testing.T, settings any, name string) []string {
+	t.Helper()
+	return findingsIn(t, settings, name, "slop")
+}
+
+func findingsIn(t *testing.T, settings any, name, pkg string) []string {
 	t.Helper()
 	as := build(t, settings)
 	i := slices.IndexFunc(as, func(a *analysis.Analyzer) bool { return a.Name == name })
@@ -227,7 +240,7 @@ func findings(t *testing.T, settings any, name string) []string {
 	// unexpected; rec keeps those out of t and the findings are read from
 	// the results instead.
 	var rec recorder
-	results := analysistest.Run(&rec, analysistest.TestData(), as[i], "slop")
+	results := analysistest.Run(&rec, analysistest.TestData(), as[i], pkg)
 	if len(results) == 0 {
 		t.Fatalf("no results: %v", rec)
 	}

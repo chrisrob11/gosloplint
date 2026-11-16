@@ -78,3 +78,25 @@ func size(n *node) int {
 	}
 	return total
 }
+
+// Purge's empty-ID guard is deliberate, so a directive suppresses emptyid
+// here and says why.
+//
+//gosloplint:ignore emptyid an empty userID purges nothing, by design
+func Purge(userID string) error {
+	if userID == "" {
+		return nil
+	}
+	return nil
+}
+
+// Forget's directive gives no reason, so it is reported and suppresses
+// nothing.
+//
+//gosloplint:ignore emptyid
+func Forget(userID string) error {
+	if userID == "" {
+		return nil
+	}
+	return nil
+}

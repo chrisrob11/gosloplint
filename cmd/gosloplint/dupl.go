@@ -5,11 +5,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
 
 	"github.com/chrisrob11/gosloplint/internal/clone"
+	"github.com/chrisrob11/gosloplint/internal/ignore"
 )
 
 const duplUsage = `usage: gosloplint dupl [flags] [packages]
@@ -46,7 +48,20 @@ func runDupl(args []string, stdout, stderr io.Writer) int {
 			}
 		}
 	}
-	clones := d.Clones()
+	var dirs []*ignore.Directive
+	for _, p := range pkgs {
+		for _, f := range p.Syntax {
+			dirs = append(dirs, ignore.Parse(p.Fset, f)...)
+		}
+	}
+	var clones []clone.Clone
+	for _, c := range d.Clones() {
+		if !slices.ContainsFunc(dirs, func(dir *ignore.Directive) bool {
+			return dir.Analyzer == "dupl" && dir.Covers(pkgs[0].Fset, "", c.B.Pos)
+		}) {
+			clones = append(clones, c)
+		}
+	}
 	var b strings.Builder
 	for _, c := range clones {
 		pos := pkgs[0].Fset.Position(c.B.Pos)

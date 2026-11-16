@@ -3,6 +3,8 @@
 package gosloplint
 
 import (
+	"slices"
+
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/chrisrob11/gosloplint/comment"
@@ -31,4 +33,18 @@ func Analyzers() []*analysis.Analyzer {
 		testhelper.Analyzer,
 		vocab.Analyzer,
 	}
+}
+
+// Checks maps each analyzer's name to its checks, the categories of its
+// findings that a //gosloplint:ignore directive may name; nil for an
+// analyzer of one check.
+func Checks() map[string][]string {
+	out := map[string][]string{}
+	for _, a := range Analyzers() {
+		out[a.Name] = nil
+	}
+	out[comment.Analyzer.Name] = slices.Clone(comment.Checks)
+	out[fileplace.Analyzer.Name] = slices.Clone(fileplace.Rules)
+	out[steer.Analyzer.Name] = slices.Clone(steer.Checks)
+	return out
 }
