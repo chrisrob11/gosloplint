@@ -25,15 +25,14 @@
 package selfassert
 
 import (
-	"bytes"
 	"go/ast"
-	"go/printer"
 	"go/token"
 	"go/types"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/types/typeutil"
+
+	"github.com/chrisrob11/gosloplint/internal/testapi"
 )
 
 // Analyzer reports assertions that compare a value to itself.
@@ -44,23 +43,9 @@ var Analyzer = &analysis.Analyzer{
 	Run:  run,
 }
 
-// testifyPkgs are the packages whose equality assertions are checked.
-var testifyPkgs = map[string]bool{
-	"github.com/stretchr/testify/assert":  true,
-	"github.com/stretchr/testify/require": true,
-}
-
-// equalityAsserts are the assertions whose two value arguments must be equal.
-var equalityAsserts = map[string]bool{
-	"Equal": true, "Equalf": true,
-	"EqualValues": true, "EqualValuesf": true,
-	"Same": true, "Samef": true,
-	"Exactly": true, "Exactlyf": true,
-}
-
 func run(pass *analysis.Pass) (any, error) {
 	for _, file := range pass.Files {
-		if !strings.HasSuffix(pass.Fset.File(file.Pos()).Name(), "_test.go") {
+		if !testapi.IsTestFile(pass.Fset, file) {
 			continue
 		}
 		ast.Inspect(file, func(n ast.Node) bool {
@@ -82,11 +67,11 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 func checkAssert(pass *analysis.Pass, call *ast.CallExpr) {
-	name, x, y, ok := equalityAssert(pass, call)
+	name, x, y, ok := testapi.EqualityAssert(pass.TypesInfo, call)
 	if !ok {
 		return
 	}
-	if left := render(pass, x); left != "" && left == render(pass, y) {
+	if left := testapi.Render(pass.Fset, x); left != "" && left == testapi.Render(pass.Fset, y) {
 		pass.Reportf(call.Pos(), "%s compares %s to itself", name, left)
 	}
 }
@@ -98,27 +83,9 @@ func checkBinary(pass *analysis.Pass, bin *ast.BinaryExpr) {
 	if isFloat(pass.TypesInfo.TypeOf(bin.X)) {
 		return
 	}
-	if left := render(pass, bin.X); left != "" && left == render(pass, bin.Y) {
+	if left := testapi.Render(pass.Fset, bin.X); left != "" && left == testapi.Render(pass.Fset, bin.Y) {
 		pass.Reportf(bin.Pos(), "%s compares %s to itself", bin.Op, left)
 	}
-}
-
-// equalityAssert returns the two compared arguments of a testify equality
-// assertion, in either its package-function form assert.Equal(t, x, y) or its
-// method form a.Equal(x, y) on *assert.Assertions.
-func equalityAssert(pass *analysis.Pass, call *ast.CallExpr) (name string, x, y ast.Expr, ok bool) {
-	fn, isFn := typeutil.Callee(pass.TypesInfo, call).(*types.Func)
-	if !isFn || fn.Pkg() == nil || !testifyPkgs[fn.Pkg().Path()] || !equalityAsserts[fn.Name()] {
-		return "", nil, nil, false
-	}
-	first := 1 // the package functions take t first
-	if fn.Signature().Recv() != nil {
-		first = 0
-	}
-	if len(call.Args) < first+2 {
-		return "", nil, nil, false
-	}
-	return fn.Pkg().Name() + "." + fn.Name(), call.Args[first], call.Args[first+1], true
 }
 
 // checkAliasedInits reports, inside one function, a comparison of two
@@ -135,7 +102,7 @@ func checkAliasedInits(pass *analysis.Pass, fn *ast.FuncDecl) {
 		switch node := n.(type) {
 		case *ast.CallExpr:
 			var ok bool
-			if name, x, y, ok = equalityAssert(pass, node); !ok {
+			if name, x, y, ok = testapi.EqualityAssert(pass.TypesInfo, node); !ok {
 				return true
 			}
 		case *ast.BinaryExpr:
@@ -148,7 +115,7 @@ func checkAliasedInits(pass *analysis.Pass, fn *ast.FuncDecl) {
 		default:
 			return true
 		}
-		rx, ry := render(pass, x), render(pass, y)
+		rx, ry := testapi.Render(pass.Fset, x), testapi.Render(pass.Fset, y)
 		for _, u := range objectsIn(pass, x) {
 			for _, v := range objectsIn(pass, y) {
 				if u == v || counts[u] != 1 || counts[v] != 1 || inits[u] == "" || inits[u] != inits[v] {
@@ -193,7 +160,7 @@ func collectInits(pass *analysis.Pass, fn *ast.FuncDecl) (map[types.Object]strin
 		}
 		counts[o]++
 		if containsCall(pass, rhs[0]) {
-			inits[o] = render(pass, rhs[0])
+			inits[o] = testapi.Render(pass.Fset, rhs[0])
 		}
 	}
 	ast.Inspect(fn.Body, func(n ast.Node) bool {
@@ -306,17 +273,6 @@ func containsCall(pass *analysis.Pass, e ast.Expr) bool {
 		return false
 	})
 	return found
-}
-
-// render prints e in normalised form, which is what makes "the same
-// expression" decidable. A blank result means it could not be printed, and
-// callers never treat two blanks as equal.
-func render(pass *analysis.Pass, e ast.Expr) string {
-	var buf bytes.Buffer
-	if err := printer.Fprint(&buf, pass.Fset, e); err != nil {
-		return ""
-	}
-	return strings.Join(strings.Fields(buf.String()), " ")
 }
 
 func isFloat(t types.Type) bool {
