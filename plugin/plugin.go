@@ -6,6 +6,7 @@ package plugin
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -13,8 +14,11 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/chrisrob11/gosloplint"
+	"github.com/chrisrob11/gosloplint/comment"
 	"github.com/chrisrob11/gosloplint/emptyid"
+	"github.com/chrisrob11/gosloplint/fileplace"
 	"github.com/chrisrob11/gosloplint/internal/camel"
+	"github.com/chrisrob11/gosloplint/steer"
 	"github.com/chrisrob11/gosloplint/vocab"
 )
 
@@ -28,9 +32,49 @@ func init() {
 // Settings is the plugin's settings block in .golangci.yml. Every analyzer
 // runs unless named in Disable.
 type Settings struct {
-	Disable []string        `json:"disable"`
-	Emptyid EmptyidSettings `json:"emptyid"`
-	Vocab   VocabSettings   `json:"vocab"`
+	Disable   []string          `json:"disable"`
+	Comment   CommentSettings   `json:"comment"`
+	Emptyid   EmptyidSettings   `json:"emptyid"`
+	Fileplace FileplaceSettings `json:"fileplace"`
+	Steer     SteerSettings     `json:"steer"`
+	Vocab     VocabSettings     `json:"vocab"`
+}
+
+// CommentSettings mirrors comment.Settings. A zero number is its default.
+type CommentSettings struct {
+	Disable         []string      `json:"disable"`
+	Limits          CommentLimits `json:"limits"`
+	Density         int           `json:"density"`
+	DensityMinLines int           `json:"density-min-lines"`
+}
+
+// CommentLimits mirrors comment.Limits, in lines. A zero limit is its
+// default.
+type CommentLimits struct {
+	Package int `json:"package"`
+	File    int `json:"file"`
+	Type    int `json:"type"`
+	Func    int `json:"func"`
+	Field   int `json:"field"`
+	Value   int `json:"value"`
+	Inline  int `json:"inline"`
+}
+
+// FileplaceSettings mirrors fileplace.Settings. A zero number is its
+// default.
+type FileplaceSettings struct {
+	Disable   []string            `json:"disable"`
+	Enable    []string            `json:"enable"`
+	TinyLines int                 `json:"tiny-lines"`
+	LongLines int                 `json:"long-lines"`
+	GrabBag   []string            `json:"grab-bag"`
+	Exempt    map[string][]string `json:"exempt"`
+}
+
+// SteerSettings mirrors steer.Settings.
+type SteerSettings struct {
+	Disable           []string `json:"disable"`
+	RecursionPackages []string `json:"recursion-packages"`
 }
 
 // EmptyidSettings mirrors the emptyid -suffixes flag.
@@ -95,20 +139,52 @@ func build(s Settings) ([]*analysis.Analyzer, error) {
 	if disabled["vocab"] && len(s.Vocab.Words) > 0 {
 		return nil, errors.New("vocab.words is set but vocab is disabled")
 	}
+	commentS, fileplaceS, steerS := commentSettings(s.Comment), fileplace.Settings(s.Fileplace), steer.Settings(s.Steer)
+	for _, c := range []struct {
+		name     string
+		zero     bool
+		validate func() error
+	}{
+		{"comment", reflect.ValueOf(s.Comment).IsZero(), commentS.Validate},
+		{"fileplace", reflect.ValueOf(s.Fileplace).IsZero(), fileplaceS.Validate},
+		{"steer", reflect.ValueOf(s.Steer).IsZero(), steerS.Validate},
+	} {
+		if disabled[c.name] && !c.zero {
+			return nil, fmt.Errorf("%s settings are set but %s is disabled", c.name, c.name)
+		}
+		if err := c.validate(); err != nil {
+			return nil, fmt.Errorf("%s.%w", c.name, err)
+		}
+	}
 
 	var out []*analysis.Analyzer
 	for _, a := range all {
 		switch {
 		case disabled[a.Name]:
 			continue
+		case a.Name == "comment":
+			a = comment.New(commentS)
 		case a.Name == "emptyid":
 			a = emptyid.New(emptyid.Settings{Suffixes: s.Emptyid.Suffixes})
+		case a.Name == "fileplace":
+			a = fileplace.New(fileplaceS)
+		case a.Name == "steer":
+			a = steer.New(steerS)
 		case a.Name == "vocab":
 			a = vocab.New(vocab.Settings{Words: s.Vocab.Words})
 		}
 		out = append(out, a)
 	}
 	return out, nil
+}
+
+func commentSettings(c CommentSettings) comment.Settings {
+	return comment.Settings{
+		Disable:         c.Disable,
+		Limits:          comment.Limits(c.Limits),
+		Density:         c.Density,
+		DensityMinLines: c.DensityMinLines,
+	}
 }
 
 // checkWords rejects a blank entry, and, when single is set, an entry of more

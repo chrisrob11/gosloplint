@@ -70,12 +70,38 @@ compiled in, and `.golangci.yml` enables it like any other linter.
            type: module
            description: Reports AI slop that compiles and passes its tests.
            settings:
-             # Analyzers to turn off, by name. Default: none, so all six run.
+             # Analyzers to turn off, by name. Default: none, so all nine run.
              disable: [testhelper]
+             comment:
+               # Checks to turn off: length, density.
+               disable: [density]
+               # Per-kind block limits, in lines; an unset kind keeps its
+               # default (package 60, file 20, type 10, func 8, field 4,
+               # value 8, inline 3).
+               limits: {func: 12, inline: 4}
+               density: 25            # percent; default 20
+               density-min-lines: 200 # default 100
              emptyid:
                # Final name words that mark an ID; replaces the default
                # [id, ids, key, keys, name]. Each entry is one name word.
                suffixes: [id, ids, key, keys, name, ref]
+             fileplace:
+               # Rules to turn off, and off-by-default rules to turn on.
+               disable: [tiny]
+               enable: [typefile]
+               tiny-lines: 30    # default 40
+               long-lines: 2000  # default 1500
+               # Replaces the default grab-bag name parts.
+               grab-bag: [util, utils, helpers, misc]
+               # Per rule, import path patterns or file name globs it skips.
+               exempt:
+                 testname: [example.com/app/internal/sqltest/...]
+                 receiver: ["*_gen.go"]
+             steer:
+               # Checks to turn off.
+               disable: [returns-interface]
+               # Packages unguarded-recursion reads; default none.
+               recursion-packages: [example.com/app/parse/...]
              vocab:
                # Banned words; a word may have parts ("legacy client").
                # Default: none, so vocab reports nothing.
@@ -89,16 +115,100 @@ compiled in, and `.golangci.yml` enables it like any other linter.
    ```
 
 Every finding is reported under the `gosloplint` linter, its message
-prefixed with the analyzer's name. Every setting is optional. A misspelt or
-unknown field, an unknown analyzer in `disable`, a blank word, a suffix of
-more than one word (`user_id`), and settings for a disabled analyzer are
-errors when golangci-lint loads the configuration, not silently ignored.
+prefixed with the analyzer's name, and for steer, comment and fileplace,
+with the check's. Every setting is optional, and a zero number means its
+default. A misspelt or unknown field, an unknown analyzer, check or rule, a
+blank word, a suffix of more than one word (`user_id`), a negative or
+out-of-range number, a malformed exemption pattern, and settings for a
+disabled analyzer are errors when golangci-lint loads the configuration, not
+silently ignored.
 
 [`example/`](example) is a working setup that builds against this checkout;
 `make plugin-e2e` builds it and checks its findings against
 `example/want.txt`.
 
 ## Analyzers
+
+### comment
+
+Reports comment blocks longer than a limit for their kind, and packages
+whose comment density runs past a ceiling. Generated prose that restates the
+code costs every later reader, and an agent reading the package pays for it
+on every request.
+
+Checks:
+
+- `length`: a comment block over its kind's limit, in lines. The kind is the
+  node the block documents, read from the AST:
+
+  | kind | documents | default limit |
+  |---|---|---|
+  | `package` | the package clause | 60 |
+  | `file` | nothing, at the top level: a header above the package clause, a section comment between declarations | 20 |
+  | `type` | a type declaration | 10 |
+  | `func` | a func or method declaration | 8 |
+  | `field` | a struct field or interface method | 4 |
+  | `value` | a const or var declaration | 8 |
+  | `inline` | nothing, inside a declaration: a comment a reader meets mid-code | 3 |
+
+- `density`: a package whose non-test, non-generated files are more than 20%
+  comment lines, over their non-blank lines. A line with code and a trailing
+  comment is code. A package under 100 non-blank lines is not held to it.
+  It is reported once, on the package clause of the file with the most
+  comment lines, preferring a file that declares something over a `doc.go`.
+
+```go
+// Bad: eleven lines narrating what the next three say.
+func (s *Store) Load(id string) (*Row, error) {
+	// First we check the cache for the row. If the row is in the cache we
+	// return it straight away, because ...
+	// ...
+	if r, ok := s.cache[id]; ok {
+		return r, nil
+	}
+	// ...
+}
+
+// Good: the comment says what the code cannot.
+func (s *Store) Load(id string) (*Row, error) {
+	// The cache may hold a row deleted since; callers re-check under the lock.
+	if r, ok := s.cache[id]; ok {
+		return r, nil
+	}
+	// ...
+}
+```
+
+One block that needs the room is exempted with a directive line inside it,
+and the reason is required: an escape with no reason is reported, and
+exempts nothing.
+
+```go
+// Grammar, one production per line:
+// ...
+//gosloplint:comment-ok the grammar is the spec this parser follows
+```
+
+Go directive lines (`//go:generate`, `//nolint:x`, the escape itself) are
+not prose and are not counted, nor is the blank `//` gofmt puts before a
+directive it moves to the end of a doc comment. Nothing exempts a package
+from the density ceiling but disabling the check or raising it. Generated
+files are skipped. Density is per package pass, over its non-test files, so a
+package and its test variant report the same finding.
+
+Flags:
+
+- `-comment.disable` (default empty): comma-separated checks not to run,
+  `length` and `density`.
+- `-comment.package`, `-comment.file`, `-comment.type`, `-comment.func`,
+  `-comment.field`, `-comment.value`, `-comment.inline` (default 0, meaning
+  the limits above): the limit for each kind, in lines.
+- `-comment.density` (default 0, meaning 20): the ceiling, in percent.
+- `-comment.density-min-lines` (default 0, meaning 100): the package size,
+  in non-blank lines, below which density is not checked.
+
+In golangci-lint they are `comment.disable`, `comment.limits.<kind>`,
+`comment.density` and `comment.density-min-lines`.
 
 ### ctxthread
 
@@ -219,6 +329,89 @@ t.Skip("unreachable")
 
 Flags: none.
 
+### fileplace
+
+Reports code in the wrong file, and file names and sizes that say nothing
+about what the file holds: the layout generated code drifts into when each
+change lands in whichever file was open.
+
+Rules:
+
+| rule | reports | default |
+|---|---|---|
+| `receiver` | a method in another type's file: a file named for a type it declares, not the method's receiver; and a test file adding a method to a non-test type | on |
+| `testname` | a `_test.go` file named for no source file of its directory and no declaration of the package it tests | on |
+| `grabbag` | a file named `util`, `utils`, `helper(s)`, `common`, `misc`, `types`, `base`, `impl`, `manager`, `testutil(s)` or `testhelper(s)`, alone or as an underscore-separated part | on |
+| `tiny` | a non-test file under 40 lines that declares no type | on |
+| `long` | a non-test file over 1500 lines | on |
+| `typefile` | a type with methods declared in a file not named for it | off |
+| `filename` | a non-test file named for nothing it declares | off |
+
+```go
+// Bad: shape.edge sits in perimeter.go, the file of type perimeter.
+// perimeter.go
+type perimeter int
+
+func (s *shape) edge() perimeter { /* ... */ }
+
+// Good: the method lives with its type, in shape.go, or in a file named
+// for its concern (shape_edges.go, or edges.go holding no type of its own).
+```
+
+```text
+Bad:  util.go, string_helpers.go, coverage_extra_test.go, twice.go (12 lines, one func)
+Good: parse.go holding Parse, parse_test.go, parse_internal_test.go, doc.go
+```
+
+A file is named for a declaration when its name, lower-cased with its
+underscores and any GOOS/GOARCH suffix dropped, spells the declaration's
+name or a run of its camelCase words, abbreviated or plural: `volatility.go`
+holds `VolatilityOf`, `refs.go` `ReferencedColumns`, `txn.go`
+`Transaction`. A file named for its package or directory is named for what
+it holds, and so is `errors.go` holding errors.
+
+Not reported: generated files and `doc.go`, under every rule. `receiver`:
+a method in a file named for a concern rather than a type, a method of a
+type whose files pass `long-lines` in `<type>_<concern>.go`, and methods
+`export_test.go` adds, which is what it is for. `testname`: `foo_test.go`
+and `foo_<suffix>_test.go` for a source `foo.go`, with the suffixes
+`internal`, `integration`, `external`, `bench`, `fuzz` and `example`; a
+stem naming a declaration of the package (`newer_test.go` testing `Newer`);
+a stem starting with the package's name; `example_test.go`,
+`example_*_test.go`, `export_test.go` and `main_test.go`. `grabbag`: a part
+that names a type of the package (`types.go` holding `Types`), and the
+package's own name (`helpers.go` in package `helpers`). `tiny`: a package's
+only file.
+
+Scope: each rule reads one package pass. `testname` reads the names of the
+non-test `.go` files in the package's directory from the directory itself,
+so an external `foo_test` package, whose pass holds only its test files, is
+checked against the source files beside it, and a file another platform's
+build excludes still counts. The declarations it reads are those of the
+package under test, which an external test package imports. A whole-file
+finding is on the file's package clause.
+
+Flags:
+
+- `-fileplace.disable` (default empty): comma-separated rules not to run.
+- `-fileplace.enable` (default empty): comma-separated off-by-default rules
+  to run, `typefile` and `filename`.
+- `-fileplace.tiny-lines` (default 0, meaning 40) and
+  `-fileplace.long-lines` (default 0, meaning 1500): the sizes, in lines.
+  `long-lines` is also the size of a type's files past which its methods may
+  split into `<type>_<concern>.go`.
+- `-fileplace.grab-bag` (default empty, meaning the list above):
+  comma-separated file name parts, replacing the default list.
+- `-fileplace.exempt` (default empty): comma-separated `rule=pattern`
+  exemptions. A pattern matches a package's import path, `...` matching any
+  string (`example.com/app/internal/scalar/...`), which covers its external
+  test package too; or a file's base name, as a `path.Match` glob
+  (`*_cases_test.go`).
+
+In golangci-lint they are `fileplace.disable`, `fileplace.enable`,
+`fileplace.tiny-lines`, `fileplace.long-lines`, `fileplace.grab-bag` and
+`fileplace.exempt`, a map from rule to a list of patterns.
+
 ### selfassert
 
 Reports, in `_test.go` files, an assertion that compares a value to itself and
@@ -259,6 +452,87 @@ return the same thing twice. Two initialisers that only allocate (`make`,
 routes before the comparison.
 
 Flags: none.
+
+### steer
+
+Reports the design shapes generated code keeps reaching for: results typed
+`any` or an interface, an interface with one implementation, and recursion
+with no depth bound. Each finding is prefixed with its check's name, and
+each message says what to write instead.
+
+Checks:
+
+- `returns-any`: a result of type `any` or `interface{}`, or a slice, array,
+  map, channel, pointer, `iter.Seq` or `iter.Seq2` of it. Every caller has
+  to type-assert it.
+- `returns-interface`: a result of any other interface type, or a container
+  of one. `error` is not reported, nor is an interface from the standard
+  library (`io.Reader`, `context.Context`: the abstractions Go code trades
+  in) or a sealed interface (one with an unexported method, so a sum type
+  only its own package implements).
+- `returns-one-concrete`: an interface result, the standard library's
+  included, where every `return` returns the same concrete type, so the
+  interface hides nothing.
+- `sole-implementation`: a `New*` function returning an interface its own
+  package declares that exactly one package-level type of that package
+  implements.
+- `unguarded-recursion`: a function, or a group of mutually recursive
+  functions, in which no name says `depth`. Off by default: it runs only in
+  the packages `recursion-packages` names, the ones that walk input a user
+  controls.
+
+```go
+// Bad: the interface hides one type, and callers must assert to reach it.
+type Store interface{ Get(id string) (Row, error) }
+
+func NewStore(db *sql.DB) Store { return &sqlStore{db: db} }
+
+// Good: return the struct; declare the interface where a caller accepts one.
+func NewStore(db *sql.DB) *SQLStore { return &SQLStore{db: db} }
+```
+
+```go
+// Bad (with recursion-packages set): deep enough input overflows the stack,
+// which is fatal and cannot be recovered.
+func eval(e Expr) Value { /* ... */ return eval(e.Left) }
+
+// Good: bound the depth and refuse past it.
+func eval(e Expr, depth int) (Value, error) {
+	if depth > maxDepth {
+		return nil, errTooDeep
+	}
+	// ...
+}
+```
+
+A result is that of any func type: functions, methods, closures, func-typed
+fields, parameters and named func types, interface methods. A signature the
+package does not choose is not reported: a method whose receiver implements
+an interface from another package with a method of that name
+(`heap.Interface.Pop() any`), a function used as a value rather than called
+(passed as a callback, stored in a field), and a func literal that is
+passed, assigned to a field or returned. A method implementing an interface
+of its own package is reported, and the message names the interface to
+change first.
+
+Scope: each check reads one package through its type information. The
+interfaces a method may implement are those of the package and everything it
+imports; an interface declared in a package that imports this one is not
+seen. `sole-implementation` counts the package's own non-test types, so a
+test fake is not a second implementation, and neither is a type in another
+package. The recursion call graph is the package's static calls, plus, for a
+call through an interface method, every method of that name whose receiver
+implements the interface. Generated files are skipped.
+
+Flags:
+
+- `-steer.disable` (default empty): comma-separated checks not to run.
+- `-steer.recursion-packages` (default empty): comma-separated import path
+  patterns in which `unguarded-recursion` runs; `...` matches any string, so
+  `...` is every package and `example.com/app/parse/...` a subtree.
+
+In golangci-lint they are the `steer.disable` and `steer.recursion-packages`
+settings.
 
 ### testhelper
 

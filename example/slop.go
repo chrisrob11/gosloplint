@@ -45,3 +45,36 @@ func query(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+// Cache is the only implementation of Getter, so NewCache should return it.
+type Getter interface{ Get(key string) string }
+
+type memCache struct{}
+
+func (memCache) Get(string) string { return "" }
+
+// NewCache hides its one implementation behind an interface.
+func NewCache() Getter { return memCache{} }
+
+// describe narrates what the next line says.
+func describe(n int) string {
+	// Here we check whether n is zero.
+	// If n is zero we return the word zero.
+	// Otherwise we fall through to the general case.
+	// The general case returns the word many.
+	if n == 0 {
+		return "zero"
+	}
+	return "many"
+}
+
+type node struct{ kids []*node }
+
+// size is reported only because .golangci.yml sets steer.recursion-packages.
+func size(n *node) int {
+	total := 1
+	for _, k := range n.kids {
+		total += size(k)
+	}
+	return total
+}
