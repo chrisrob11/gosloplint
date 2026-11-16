@@ -15,8 +15,10 @@ import (
 
 	"github.com/chrisrob11/gosloplint"
 	"github.com/chrisrob11/gosloplint/comment"
+	"github.com/chrisrob11/gosloplint/dupl"
 	"github.com/chrisrob11/gosloplint/emptyid"
 	"github.com/chrisrob11/gosloplint/fileplace"
+	"github.com/chrisrob11/gosloplint/internal/baseline"
 	"github.com/chrisrob11/gosloplint/internal/camel"
 	"github.com/chrisrob11/gosloplint/steer"
 	"github.com/chrisrob11/gosloplint/vocab"
@@ -32,8 +34,13 @@ func init() {
 // Settings is the plugin's settings block in .golangci.yml. Every analyzer
 // runs unless named in Disable.
 type Settings struct {
+	// Baseline is a file written by `gosloplint baseline`: each analyzer
+	// reports a package's findings of a check only once they outnumber its
+	// count there.
+	Baseline  string            `json:"baseline"`
 	Disable   []string          `json:"disable"`
 	Comment   CommentSettings   `json:"comment"`
+	Dupl      DuplSettings      `json:"dupl"`
 	Emptyid   EmptyidSettings   `json:"emptyid"`
 	Fileplace FileplaceSettings `json:"fileplace"`
 	Steer     SteerSettings     `json:"steer"`
@@ -58,6 +65,14 @@ type CommentLimits struct {
 	Field   int `json:"field"`
 	Value   int `json:"value"`
 	Inline  int `json:"inline"`
+}
+
+// DuplSettings mirrors dupl.Settings. A zero number is its default.
+type DuplSettings struct {
+	MinNodes      int      `json:"min-nodes"`
+	MinStatements int      `json:"min-statements"`
+	Tests         bool     `json:"tests"`
+	Exempt        []string `json:"exempt"`
 }
 
 // FileplaceSettings mirrors fileplace.Settings. A zero number is its
@@ -139,13 +154,14 @@ func build(s Settings) ([]*analysis.Analyzer, error) {
 	if disabled["vocab"] && len(s.Vocab.Words) > 0 {
 		return nil, errors.New("vocab.words is set but vocab is disabled")
 	}
-	commentS, fileplaceS, steerS := commentSettings(s.Comment), fileplace.Settings(s.Fileplace), steer.Settings(s.Steer)
+	commentS, duplS, fileplaceS, steerS := commentSettings(s.Comment), dupl.Settings(s.Dupl), fileplace.Settings(s.Fileplace), steer.Settings(s.Steer)
 	for _, c := range []struct {
 		name     string
 		zero     bool
 		validate func() error
 	}{
 		{"comment", reflect.ValueOf(s.Comment).IsZero(), commentS.Validate},
+		{"dupl", reflect.ValueOf(s.Dupl).IsZero(), duplS.Validate},
 		{"fileplace", reflect.ValueOf(s.Fileplace).IsZero(), fileplaceS.Validate},
 		{"steer", reflect.ValueOf(s.Steer).IsZero(), steerS.Validate},
 	} {
@@ -164,6 +180,8 @@ func build(s Settings) ([]*analysis.Analyzer, error) {
 			continue
 		case a.Name == "comment":
 			a = comment.New(commentS)
+		case a.Name == "dupl":
+			a = dupl.New(duplS)
 		case a.Name == "emptyid":
 			a = emptyid.New(emptyid.Settings{Suffixes: s.Emptyid.Suffixes})
 		case a.Name == "fileplace":
@@ -175,7 +193,14 @@ func build(s Settings) ([]*analysis.Analyzer, error) {
 		}
 		out = append(out, a)
 	}
-	return out, nil
+	if s.Baseline == "" {
+		return out, nil
+	}
+	counts, err := baseline.Read(s.Baseline)
+	if err != nil {
+		return nil, fmt.Errorf("baseline: %w", err)
+	}
+	return baseline.Wrap(out, func() (baseline.Counts, error) { return counts, nil }), nil
 }
 
 func commentSettings(c CommentSettings) comment.Settings {
