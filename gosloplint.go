@@ -45,6 +45,7 @@ func Checks() map[string][]string {
 	for _, a := range Analyzers() {
 		out[a.Name] = nil
 	}
+	out[cannotfail.Analyzer.Name] = slices.Clone(cannotfail.Checks)
 	out[comment.Analyzer.Name] = slices.Clone(comment.Checks)
 	out[fileplace.Analyzer.Name] = slices.Clone(fileplace.Rules)
 	out[steer.Analyzer.Name] = slices.Clone(steer.Checks)
