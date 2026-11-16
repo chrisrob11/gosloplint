@@ -28,7 +28,7 @@ func TestRegisteredUnderItsName(t *testing.T) {
 }
 
 func TestNoSettingsEnablesEveryAnalyzer(t *testing.T) {
-	want := []string{"ctxthread", "emptyid", "emptyskip", "selfassert", "steer", "testhelper", "vocab"}
+	want := []string{"comment", "ctxthread", "emptyid", "emptyskip", "selfassert", "steer", "testhelper", "vocab"}
 	if got := names(t, build(t, nil)); !slices.Equal(got, want) {
 		t.Errorf("analyzers = %v, want %v", got, want)
 	}
@@ -36,7 +36,7 @@ func TestNoSettingsEnablesEveryAnalyzer(t *testing.T) {
 
 func TestDisable(t *testing.T) {
 	as := build(t, map[string]any{"disable": []any{"ctxthread", "vocab"}})
-	want := []string{"emptyid", "emptyskip", "selfassert", "steer", "testhelper"}
+	want := []string{"comment", "emptyid", "emptyskip", "selfassert", "steer", "testhelper"}
 	if got := names(t, as); !slices.Equal(got, want) {
 		t.Errorf("analyzers = %v, want %v", got, want)
 	}
@@ -51,7 +51,7 @@ func TestBadSettingsAreErrors(t *testing.T) {
 		{"unknown field", map[string]any{"disabled": []any{"vocab"}}, `unknown field "disabled"`},
 		{"unknown nested field", map[string]any{"vocab": map[string]any{"word": []any{"x"}}}, `unknown field "word"`},
 		{"wrong type", map[string]any{"disable": "vocab"}, "cannot unmarshal string"},
-		{"unknown analyzer", map[string]any{"disable": []any{"emptyids"}}, `disable: unknown analyzer "emptyids" (known: ctxthread, emptyid,`},
+		{"unknown analyzer", map[string]any{"disable": []any{"emptyids"}}, `disable: unknown analyzer "emptyids" (known: comment, ctxthread, emptyid,`},
 		{"blank suffix", map[string]any{"emptyid": map[string]any{"suffixes": []any{"id", " "}}}, "emptyid.suffixes[1]: empty word"},
 		{"multi-word suffix", map[string]any{"emptyid": map[string]any{"suffixes": []any{"user_id"}}}, `emptyid.suffixes[0]: "user_id" is 2 words`},
 		{"blank word", map[string]any{"vocab": map[string]any{"words": []any{""}}}, "vocab.words[0]: empty word"},
