@@ -9,6 +9,7 @@ import (
 	"github.com/chrisrob11/gosloplint/ctxthread"
 	"github.com/chrisrob11/gosloplint/emptyid"
 	"github.com/chrisrob11/gosloplint/emptyskip"
+	"github.com/chrisrob11/gosloplint/fileplace"
 	"github.com/chrisrob11/gosloplint/selfassert"
 	"github.com/chrisrob11/gosloplint/steer"
 	"github.com/chrisrob11/gosloplint/testhelper"
@@ -22,6 +23,7 @@ func Analyzers() []*analysis.Analyzer {
 		ctxthread.Analyzer,
 		emptyid.Analyzer,
 		emptyskip.Analyzer,
+		fileplace.Analyzer,
 		selfassert.Analyzer,
 		steer.Analyzer,
 		testhelper.Analyzer,

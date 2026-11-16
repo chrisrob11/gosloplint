@@ -27,4 +27,3 @@ func NewLeaf() *Leaf { return &Leaf{} }
 
 // Sealed has an unexported method, so only this package implements it.
 type Sealed interface{ sealed() }
-

@@ -1,0 +1,3 @@
+package conn
+
+func VolatilityOf() {}
