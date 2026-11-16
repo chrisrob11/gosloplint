@@ -624,7 +624,21 @@ Checks:
   of one. `error` is not reported, nor is an interface from the standard
   library (`io.Reader`, `context.Context`: the abstractions Go code trades
   in) or a sealed interface (one with an unexported method, so a sum type
-  only its own package implements).
+  only its own package implements). Nor is a slice, array or map of an
+  interface another module declares when another module's API dictates
+  it: the function's body puts values of two or more concrete types into a
+  value of the result type (as composite literal elements, `append`
+  arguments or index assignments, outside any func literal), or a call of
+  the function is passed straight (as a struct literal field, a field
+  assigned, or an argument, spread or not) to a field or parameter of
+  exactly that type another module declares. `func flags() []cli.Flag`
+  holding a `*cli.StringFlag` and a `*cli.BoolFlag` for `cli.Command.Flags`
+  has no struct to return instead. One holding a single concrete type and
+  never passed straight to such an API is still reported, and so is a lone
+  `cli.Flag` result however many types it holds. The module is the one the
+  driver reports (`go vet`, the multichecker, golangci-lint); a driver that
+  reports none is answered from the import paths, which must share their
+  first elements, up to three, to be one module.
 - `returns-one-concrete`: an interface result, the standard library's
   included, where every `return` returns the same concrete type, so the
   interface hides nothing.

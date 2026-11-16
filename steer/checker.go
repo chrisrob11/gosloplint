@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -50,6 +51,10 @@ type checker struct {
 	// asValue are the package's functions and methods used other than by a
 	// call, as a callback is: the type it is passed as fixes its signature.
 	asValue map[*types.Func]bool
+	// toAPI are the package's functions a call of which is passed straight
+	// to a field or parameter of its result's type that another module
+	// declares.
+	toAPI map[*types.Func]bool
 }
 
 func newChecker(pass *analysis.Pass, s Settings) *checker {
@@ -58,6 +63,7 @@ func newChecker(pass *analysis.Pass, s Settings) *checker {
 
 func (c *checker) run() {
 	c.asValue = usedAsValue(c.pass)
+	c.toAPI = c.passedToAPI()
 	for _, f := range c.pass.Files {
 		if ast.IsGenerated(f) {
 			continue
@@ -119,8 +125,10 @@ func (c *checker) results(ft *ast.FuncType, stack []ast.Node) {
 	if body != nil && decl == nil && litDictated(stack) {
 		return
 	}
+	var fn *types.Func
 	if decl != nil {
-		if fn, ok := c.pass.TypesInfo.Defs[decl.Name].(*types.Func); ok && c.asValue[fn] {
+		fn, _ = c.pass.TypesInfo.Defs[decl.Name].(*types.Func)
+		if fn != nil && c.asValue[fn] {
 			return
 		}
 	}
@@ -130,6 +138,9 @@ func (c *checker) results(ft *ast.FuncType, stack []ast.Node) {
 	var iface ast.Expr
 	for _, field := range ft.Results.List {
 		k, container := classify(c.pass.Pkg, c.pass.TypesInfo.TypeOf(field.Type))
+		if k == ifaceKind && container && c.apiContainer(c.pass.TypesInfo.TypeOf(field.Type), fn, body) {
+			k = concrete
+		}
 		if k != concrete && !checked {
 			checked = true
 			if decl != nil && decl.Recv != nil {
@@ -232,6 +243,167 @@ func standard(p *types.Package) bool {
 	}
 	first, _, _ := strings.Cut(p.Path(), "/")
 	return !strings.Contains(first, ".")
+}
+
+// apiContainer reports whether t, a result of fn with body, is a slice,
+// array or map of an interface another module declares, which no struct
+// can replace: body puts values of two or more concrete types into a value
+// of t, or a call of fn is passed straight to a field or parameter of type t
+// that another module declares.
+func (c *checker) apiContainer(t types.Type, fn *types.Func, body *ast.BlockStmt) bool {
+	var elem types.Type
+	switch u := types.Unalias(t).(type) {
+	case *types.Slice:
+		elem = u.Elem()
+	case *types.Array:
+		elem = u.Elem()
+	case *types.Map:
+		elem = u.Elem()
+	default:
+		return false
+	}
+	named, ok := types.Unalias(elem).(*types.Named)
+	if !ok || !c.otherModule(named.Obj().Pkg()) {
+		return false
+	}
+	return fn != nil && c.toAPI[fn.Origin()] || c.elementTypes(t, body) > 1
+}
+
+// elementTypes counts the distinct concrete types of the values body, but
+// not a func literal in it, puts into a value of type t: the elements of a
+// composite literal of t, the values appended to one, and the values
+// assigned to an index of one.
+func (c *checker) elementTypes(t types.Type, body *ast.BlockStmt) int {
+	if body == nil {
+		return 0
+	}
+	info := c.pass.TypesInfo
+	isT := func(e ast.Expr) bool {
+		tt := info.TypeOf(e)
+		return tt != nil && types.Identical(tt, t)
+	}
+	var seen []types.Type
+	add := func(e ast.Expr) {
+		tv := info.Types[e]
+		if tv.Type == nil || tv.IsNil() || types.IsInterface(tv.Type) ||
+			slices.ContainsFunc(seen, func(s types.Type) bool { return types.Identical(s, tv.Type) }) {
+			return
+		}
+		seen = append(seen, tv.Type)
+	}
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.CompositeLit:
+			if isT(n) {
+				for _, e := range n.Elts {
+					if kv, ok := e.(*ast.KeyValueExpr); ok {
+						e = kv.Value
+					}
+					add(e)
+				}
+			}
+		case *ast.CallExpr:
+			if id, ok := ast.Unparen(n.Fun).(*ast.Ident); ok && isBuiltin(info, id, "append") && isT(n) && !n.Ellipsis.IsValid() {
+				for _, e := range n.Args[1:] {
+					add(e)
+				}
+			}
+		case *ast.AssignStmt:
+			for i, l := range n.Lhs {
+				if ix, ok := l.(*ast.IndexExpr); ok && len(n.Rhs) == len(n.Lhs) && isT(ix.X) {
+					add(n.Rhs[i])
+				}
+			}
+		}
+		return true
+	})
+	return len(seen)
+}
+
+func isBuiltin(info *types.Info, id *ast.Ident, name string) bool {
+	b, ok := info.Uses[id].(*types.Builtin)
+	return ok && b.Name() == name
+}
+
+// passedToAPI is every function of the package a call of which is passed
+// straight, as a keyed composite literal field, a field assigned, or an
+// argument, to a field or parameter of the call's type that another module
+// declares.
+func (c *checker) passedToAPI() map[*types.Func]bool {
+	info := c.pass.TypesInfo
+	out := map[*types.Func]bool{}
+	mark := func(e ast.Expr, target types.Type, declared *types.Package) {
+		call, ok := ast.Unparen(e).(*ast.CallExpr)
+		if !ok || !c.otherModule(declared) {
+			return
+		}
+		fn, ok := info.Uses[identOf(call.Fun)].(*types.Func)
+		if ok && fn.Pkg() == c.pass.Pkg && types.Identical(info.TypeOf(call), target) {
+			out[fn.Origin()] = true
+		}
+	}
+	for _, f := range c.pass.Files {
+		ast.Inspect(f, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.KeyValueExpr:
+				if key, ok := n.Key.(*ast.Ident); ok {
+					if field, ok := info.Uses[key].(*types.Var); ok && field.IsField() {
+						mark(n.Value, field.Type(), field.Pkg())
+					}
+				}
+			case *ast.AssignStmt:
+				for i, l := range n.Lhs {
+					sel, ok := l.(*ast.SelectorExpr)
+					if s := info.Selections[sel]; ok && s != nil && s.Kind() == types.FieldVal && len(n.Rhs) == len(n.Lhs) {
+						mark(n.Rhs[i], s.Obj().Type(), s.Obj().Pkg())
+					}
+				}
+			case *ast.CallExpr:
+				callee, ok := info.Uses[identOf(n.Fun)].(*types.Func)
+				sig, _ := info.TypeOf(n.Fun).(*types.Signature)
+				if !ok || sig == nil {
+					break
+				}
+				for i, arg := range n.Args {
+					if p := paramType(sig, i, n.Ellipsis.IsValid()); p != nil {
+						mark(arg, p, callee.Pkg())
+					}
+				}
+			}
+			return true
+		})
+	}
+	return out
+}
+
+// paramType is the type the i-th argument of a call of sig takes, spread
+// when the call ends in ...; nil past the parameters.
+func paramType(sig *types.Signature, i int, spread bool) types.Type {
+	params := sig.Params()
+	switch last := params.Len() - 1; {
+	case sig.Variadic() && i >= last && !spread:
+		return params.At(last).Type().(*types.Slice).Elem()
+	case i < params.Len():
+		return params.At(i).Type()
+	}
+	return nil
+}
+
+// otherModule reports whether p is outside the package's module. A driver
+// that gives no module is answered from the paths: p is another module's
+// unless its first elements, up to three, match the package's.
+func (c *checker) otherModule(p *types.Package) bool {
+	if p == nil {
+		return false
+	}
+	if m := c.pass.Module; m != nil && m.Path != "" {
+		return p.Path() != m.Path && !strings.HasPrefix(p.Path(), m.Path+"/")
+	}
+	a, b := strings.Split(p.Path(), "/"), strings.Split(c.pass.Pkg.Path(), "/")
+	n := min(3, len(a), len(b))
+	return !slices.Equal(a[:n], b[:n])
 }
 
 // litDictated reports whether the func literal on top of stack (its type

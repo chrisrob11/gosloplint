@@ -4,7 +4,10 @@
 //   - returns-any: a result of type any or interface{}, or a container of it
 //     (slice, array, map value, channel, pointer, iter.Seq or iter.Seq2).
 //   - returns-interface: a result of any other interface type but error, or
-//     a container of one.
+//     a container of one. A slice, array or map of another module's
+//     interface is left alone when the body fills it with two or more
+//     concrete types, or a call is passed straight to another module's
+//     field or parameter of that type: that API dictates it.
 //   - returns-one-concrete: an interface result where every return statement
 //     returns the same concrete type, so the interface hides nothing.
 //   - sole-implementation: a New* function returning an interface its own
