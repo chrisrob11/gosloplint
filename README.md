@@ -597,8 +597,16 @@ type whose files pass `long-lines` in `<type>_<concern>.go`, and methods
 and `foo_<suffix>_test.go` for a source `foo.go`, with the suffixes
 `internal`, `integration`, `external`, `bench`, `fuzz` and `example`; a
 stem naming a declaration of the package (`newer_test.go` testing `Newer`);
-a stem starting with the package's name; `example_test.go`,
-`example_*_test.go`, `export_test.go` and `main_test.go`. `grabbag`: a part
+the package's general test file, `<pkg>_test.go`, or one named for the
+directory, alone or with one of those suffixes; `<pkg>_<x>_test.go` only
+when `<x>` names a source file of the directory or a declaration of the
+package, and in package `main` also a subcommand: a string `case` of a
+switch on an argument (`os.Args[1]`, `args[0]`, `fs.Arg(0)`), or the first
+word of the `Name` or `Use` of a composite literal of a type named
+`Command` (urfave/cli, cobra); `example_test.go`, `example_*_test.go`,
+`export_test.go` and `main_test.go`. So `main_ask_test.go` passes in a
+command with an `ask` subcommand or an `askCmd` function, and
+`gadget_extra_test.go` names nothing. `grabbag`: a part
 that names a type of the package (`types.go` holding `Types`), and the
 package's own name (`helpers.go` in package `helpers`). `tiny`: a package's
 only file.
