@@ -810,6 +810,15 @@ Not reported: an assertion helper with no result, a helper that returns an
 `error`, and setup fixtures without the `must` prefix (`openDB(t)`), which
 build the world around the code under test rather than wrap it.
 
+The rule keys on the `must` prefix, so renaming a helper to dodge it
+(`mustGit` to `git`) silences the finding and keeps the defect. Fix the
+helper instead: return the error and check it at the call site, or split
+setup from reading output. A setup helper that returns nothing may fail
+the test itself, since no caller reads a value from it; a helper whose
+result a test reads returns `(T, error)`. prfoundry split `mustGit` that
+way into `runGit(t, ...)`, for setup, and `gitOut(...) (string, error)`,
+for a test that reads git's output and checks its error where it reads.
+
 Flags: none.
 
 ### vocab
