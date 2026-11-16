@@ -5,6 +5,7 @@ package gosloplint
 import (
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/chrisrob11/gosloplint/ctxthread"
 	"github.com/chrisrob11/gosloplint/emptyskip"
 	"github.com/chrisrob11/gosloplint/selfassert"
 )
@@ -12,6 +13,7 @@ import (
 // Analyzers returns every gosloplint analyzer.
 func Analyzers() []*analysis.Analyzer {
 	return []*analysis.Analyzer{
+		ctxthread.Analyzer,
 		emptyskip.Analyzer,
 		selfassert.Analyzer,
 	}
