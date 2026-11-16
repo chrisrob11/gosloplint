@@ -1,0 +1,328 @@
+// Package selfassert defines an Analyzer that reports test assertions which
+// compare a value to itself, and so pass while testing nothing.
+//
+// The shape usually arrives through a rewrite: a change makes one spelling of
+// a value illegal, both sides of an existing comparison are rewritten to the
+// surviving spelling, and the assertion silently becomes x == x. It stays
+// green and keeps its coverage, and the property it protected is gone.
+//
+// Three shapes are reported, all in _test.go files:
+//   - a testify equality assertion whose two compared arguments are the same
+//     expression: assert.Equal(t, f(x), f(x));
+//   - x == x or x != x with the same expression on both sides (floating-point
+//     operands are skipped: x != x is the NaN test);
+//   - two locals given the same initialiser, each assigned once, then compared
+//     to each other, directly or inside larger expressions that differ only in
+//     which of the two they name: a := f(); b := f(); assert.Equal(t, a[k], b[k]).
+//
+// "The same expression" is decided on the printed syntax tree, so formatting
+// does not matter. Two different expressions that happen to evaluate to the
+// same value are not reported.
+//
+// The not-equal assertions (NotEqual, NotSame, ...) are deliberately left
+// out: assert.NotEqual(t, newID(), newID()) is the strongest way to say a
+// function does not return the same thing twice.
+package selfassert
+
+import (
+	"bytes"
+	"go/ast"
+	"go/printer"
+	"go/token"
+	"go/types"
+	"strings"
+
+	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/types/typeutil"
+)
+
+// Analyzer reports assertions that compare a value to itself.
+var Analyzer = &analysis.Analyzer{
+	Name: "selfassert",
+	Doc:  "selfassert: report test assertions that compare a value to itself\n\nReports, in _test.go files, a testify equality assertion or an == / != whose two sides are the same expression, and a comparison of two locals built by the same initialiser. Such an assertion cannot fail.",
+	URL:  "https://github.com/chrisrob11/gosloplint#selfassert",
+	Run:  run,
+}
+
+// testifyPkgs are the packages whose equality assertions are checked.
+var testifyPkgs = map[string]bool{
+	"github.com/stretchr/testify/assert":  true,
+	"github.com/stretchr/testify/require": true,
+}
+
+// equalityAsserts are the assertions whose two value arguments must be equal.
+var equalityAsserts = map[string]bool{
+	"Equal": true, "Equalf": true,
+	"EqualValues": true, "EqualValuesf": true,
+	"Same": true, "Samef": true,
+	"Exactly": true, "Exactlyf": true,
+}
+
+func run(pass *analysis.Pass) (any, error) {
+	for _, file := range pass.Files {
+		if !strings.HasSuffix(pass.Fset.File(file.Pos()).Name(), "_test.go") {
+			continue
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch node := n.(type) {
+			case *ast.CallExpr:
+				checkAssert(pass, node)
+			case *ast.BinaryExpr:
+				checkBinary(pass, node)
+			}
+			return true
+		})
+		for _, decl := range file.Decls {
+			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Body != nil {
+				checkAliasedInits(pass, fn)
+			}
+		}
+	}
+	return nil, nil
+}
+
+func checkAssert(pass *analysis.Pass, call *ast.CallExpr) {
+	name, x, y, ok := equalityAssert(pass, call)
+	if !ok {
+		return
+	}
+	if left := render(pass, x); left != "" && left == render(pass, y) {
+		pass.Reportf(call.Pos(), "%s compares %s to itself", name, left)
+	}
+}
+
+func checkBinary(pass *analysis.Pass, bin *ast.BinaryExpr) {
+	if bin.Op != token.EQL && bin.Op != token.NEQ {
+		return
+	}
+	if isFloat(pass.TypesInfo.TypeOf(bin.X)) {
+		return
+	}
+	if left := render(pass, bin.X); left != "" && left == render(pass, bin.Y) {
+		pass.Reportf(bin.Pos(), "%s compares %s to itself", bin.Op, left)
+	}
+}
+
+// equalityAssert returns the two compared arguments of a testify equality
+// assertion, in either its package-function form assert.Equal(t, x, y) or its
+// method form a.Equal(x, y) on *assert.Assertions.
+func equalityAssert(pass *analysis.Pass, call *ast.CallExpr) (name string, x, y ast.Expr, ok bool) {
+	fn, isFn := typeutil.Callee(pass.TypesInfo, call).(*types.Func)
+	if !isFn || fn.Pkg() == nil || !testifyPkgs[fn.Pkg().Path()] || !equalityAsserts[fn.Name()] {
+		return "", nil, nil, false
+	}
+	first := 1 // the package functions take t first
+	if fn.Signature().Recv() != nil {
+		first = 0
+	}
+	if len(call.Args) < first+2 {
+		return "", nil, nil, false
+	}
+	return fn.Pkg().Name() + "." + fn.Name(), call.Args[first], call.Args[first+1], true
+}
+
+// checkAliasedInits reports, inside one function, a comparison of two
+// different locals that hold the same initialiser and are assigned once.
+//
+// Only an initialiser that calls something counts: a := 1; b := 1 is
+// uninteresting, and two make(...) containers are usually filled by
+// different routes before they are compared.
+func checkAliasedInits(pass *analysis.Pass, fn *ast.FuncDecl) {
+	inits, counts := collectInits(pass, fn)
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		var x, y ast.Expr
+		var name string
+		switch node := n.(type) {
+		case *ast.CallExpr:
+			var ok bool
+			if name, x, y, ok = equalityAssert(pass, node); !ok {
+				return true
+			}
+		case *ast.BinaryExpr:
+			// Only ==: a != b over two names holding the same computation is
+			// the determinism idiom, not a defect.
+			if node.Op != token.EQL {
+				return true
+			}
+			x, y, name = node.X, node.Y, node.Op.String()
+		default:
+			return true
+		}
+		rx, ry := render(pass, x), render(pass, y)
+		for _, u := range objectsIn(pass, x) {
+			for _, v := range objectsIn(pass, y) {
+				if u == v || counts[u] != 1 || counts[v] != 1 || inits[u] == "" || inits[u] != inits[v] {
+					continue
+				}
+				if alphaRename(rx, u.Name()) == alphaRename(ry, v.Name()) {
+					pass.Reportf(n.Pos(), "%s compares %s and %s, which hold the same initialiser %s",
+						name, u.Name(), v.Name(), inits[u])
+					return true
+				}
+			}
+		}
+		return true
+	})
+}
+
+// collectInits maps each local assigned exactly once in fn to its rendered
+// initialiser, and counts assignments so a reassigned local is discarded.
+func collectInits(pass *analysis.Pass, fn *ast.FuncDecl) (map[types.Object]string, map[types.Object]int) {
+	inits := map[types.Object]string{}
+	counts := map[types.Object]int{}
+	obj := func(e ast.Expr) types.Object {
+		id, ok := e.(*ast.Ident)
+		if !ok || id.Name == "_" {
+			return nil
+		}
+		return pass.TypesInfo.ObjectOf(id)
+	}
+	note := func(lhs, rhs []ast.Expr) {
+		if len(lhs) != 1 || len(rhs) != 1 {
+			// One name's value is not a standalone expression here.
+			for _, l := range lhs {
+				if o := obj(l); o != nil {
+					counts[o] += 2
+				}
+			}
+			return
+		}
+		o := obj(lhs[0])
+		if o == nil {
+			return
+		}
+		counts[o]++
+		if containsCall(pass, rhs[0]) {
+			inits[o] = render(pass, rhs[0])
+		}
+	}
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		switch s := n.(type) {
+		case *ast.AssignStmt:
+			note(s.Lhs, s.Rhs)
+		case *ast.ValueSpec:
+			lhs := make([]ast.Expr, 0, len(s.Names))
+			for _, id := range s.Names {
+				lhs = append(lhs, id)
+			}
+			note(lhs, s.Values)
+		case *ast.IncDecStmt:
+			if o := obj(s.X); o != nil {
+				counts[o] += 2
+			}
+		case *ast.UnaryExpr:
+			// &x lets anything write x.
+			if o := obj(s.X); s.Op == token.AND && o != nil {
+				counts[o] += 2
+			}
+		}
+		return true
+	})
+	return inits, counts
+}
+
+// objectsIn lists the local variables named anywhere in e, excluding the
+// field half of a selector.
+func objectsIn(pass *analysis.Pass, e ast.Expr) []types.Object {
+	seen := map[types.Object]bool{}
+	var out []types.Object
+	ast.Inspect(e, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok {
+			ast.Inspect(sel.X, func(m ast.Node) bool {
+				out = appendVar(pass, m, seen, out)
+				return true
+			})
+			return false
+		}
+		out = appendVar(pass, n, seen, out)
+		return true
+	})
+	return out
+}
+
+func appendVar(pass *analysis.Pass, n ast.Node, seen map[types.Object]bool, out []types.Object) []types.Object {
+	id, ok := n.(*ast.Ident)
+	if !ok {
+		return out
+	}
+	v, ok := pass.TypesInfo.Uses[id].(*types.Var)
+	if !ok || v.IsField() || seen[v] {
+		return out
+	}
+	seen[v] = true
+	return append(out, v)
+}
+
+// alphaRename replaces whole-word occurrences of name in printed Go source
+// with a placeholder, so two expressions differing only in which alias they
+// name compare equal. The input comes from go/printer, so it holds no
+// comments and identifiers are exactly the \w+ tokens.
+func alphaRename(rendered, name string) string {
+	var b strings.Builder
+	for i := 0; i < len(rendered); {
+		if !isIdentStart(rendered[i]) {
+			b.WriteByte(rendered[i])
+			i++
+			continue
+		}
+		j := i
+		for j < len(rendered) && isIdentPart(rendered[j]) {
+			j++
+		}
+		if rendered[i:j] == name {
+			b.WriteString("\x00alias")
+		} else {
+			b.WriteString(rendered[i:j])
+		}
+		i = j
+	}
+	return b.String()
+}
+
+func isIdentStart(c byte) bool {
+	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+func isIdentPart(c byte) bool { return isIdentStart(c) || (c >= '0' && c <= '9') }
+
+// containsCall reports whether e calls something other than the make and new
+// builtins. Conversions such as string(b) are not calls.
+func containsCall(pass *analysis.Pass, e ast.Expr) bool {
+	found := false
+	ast.Inspect(e, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || found {
+			return !found
+		}
+		if tv, ok := pass.TypesInfo.Types[call.Fun]; ok && tv.IsType() {
+			return true
+		}
+		if id, ok := call.Fun.(*ast.Ident); ok {
+			if b, ok := pass.TypesInfo.Uses[id].(*types.Builtin); ok && (b.Name() == "make" || b.Name() == "new") {
+				return false
+			}
+		}
+		found = true
+		return false
+	})
+	return found
+}
+
+// render prints e in normalised form, which is what makes "the same
+// expression" decidable. A blank result means it could not be printed, and
+// callers never treat two blanks as equal.
+func render(pass *analysis.Pass, e ast.Expr) string {
+	var buf bytes.Buffer
+	if err := printer.Fprint(&buf, pass.Fset, e); err != nil {
+		return ""
+	}
+	return strings.Join(strings.Fields(buf.String()), " ")
+}
+
+func isFloat(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+	b, ok := t.Underlying().(*types.Basic)
+	return ok && b.Info()&(types.IsFloat|types.IsComplex) != 0
+}
