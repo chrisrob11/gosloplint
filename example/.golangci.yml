@@ -1,0 +1,21 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - gosloplint
+  settings:
+    custom:
+      gosloplint:
+        type: module
+        description: Reports AI slop that compiles and passes its tests.
+        settings:
+          disable: [testhelper]
+          emptyid:
+            suffixes: [id, ids, key, keys, name, ref]
+          vocab:
+            words: [legacy client]
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
