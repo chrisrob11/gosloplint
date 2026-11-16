@@ -14,6 +14,8 @@ linters:
           comment:
             limits:
               inline: 3
+          dupl:
+            exempt: ["*_gen.go"]
           emptyid:
             suffixes: [id, ids, key, keys, name, ref]
           fileplace:

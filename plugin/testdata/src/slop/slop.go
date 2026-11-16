@@ -39,3 +39,47 @@ func walk(n int) int {
 // eight
 // nine
 func nine() {}
+
+// second is reported by dupl as a copy of first under the default minimum
+// size.
+func first(xs []int) (int, int) {
+	lo, hi := xs[0], xs[0]
+	for _, x := range xs {
+		if x < lo {
+			lo = x
+		}
+		if x > hi {
+			hi = x
+		}
+	}
+	hi -= lo / 2
+	span := hi - lo
+	if span > 100 {
+		return lo, 100
+	}
+	if span < 0 {
+		return hi, -span
+	}
+	return lo, span
+}
+
+func second(ys []int) (int, int) {
+	a, b := ys[1], ys[1]
+	for _, y := range ys {
+		if y < a {
+			a = y
+		}
+		if y > b {
+			b = y
+		}
+	}
+	b -= a / 2
+	width := b - a
+	if width > 50 {
+		return a, 50
+	}
+	if width < 0 {
+		return b, -width
+	}
+	return a, width
+}

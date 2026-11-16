@@ -13,8 +13,8 @@ import (
 	"github.com/chrisrob11/gosloplint/internal/pkgpattern"
 )
 
-// The defaults a zero Config field takes. DefaultMinNodes is about six lines
-// of ordinary Go.
+// The defaults a zero Config field takes. DefaultMinNodes is about fifteen
+// lines of ordinary Go, at three to four nodes a line.
 const (
 	DefaultMinNodes      = 60
 	DefaultMinStatements = 1

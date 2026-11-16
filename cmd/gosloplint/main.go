@@ -10,6 +10,8 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"io"
 	"os"
 
 	"golang.org/x/tools/go/analysis/multichecker"
@@ -34,4 +36,19 @@ func main() {
 		}
 		return baseline.Read(*path)
 	})...)
+}
+
+// subcommand returns the flag set of `gosloplint name`, printing usage and
+// errors to stderr, and fail, which prints an error and returns exit code 2.
+func subcommand(name, usage string, stderr io.Writer) (*flag.FlagSet, func(error) int) {
+	fs := flag.NewFlagSet("gosloplint "+name, flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		_, _ = io.WriteString(stderr, usage)
+		fs.PrintDefaults()
+	}
+	return fs, func(err error) int {
+		_, _ = fmt.Fprintf(stderr, "gosloplint %s: %v\n", name, err)
+		return 2
+	}
 }

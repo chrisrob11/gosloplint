@@ -2,6 +2,8 @@ package plugin_test
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -70,6 +72,11 @@ func TestBadSettingsAreErrors(t *testing.T) {
 		{"enable a rule that is on", map[string]any{"fileplace": map[string]any{"enable": []any{"tiny"}}}, `fileplace.enable[0]: "tiny" is not a rule that is off by default`},
 		{"bad exempt glob", map[string]any{"fileplace": map[string]any{"exempt": map[string]any{"tiny": []any{"[x"}}}}, `fileplace.exempt.tiny[0]: "[x": syntax error in pattern`},
 		{"tiny not below long", map[string]any{"fileplace": map[string]any{"tiny-lines": 100, "long-lines": 90}}, "fileplace.tiny-lines 100 is not below long-lines 90"},
+		{"negative dupl size", map[string]any{"dupl": map[string]any{"min-nodes": -5}}, "dupl.min-nodes: -5 is negative"},
+		{"bad dupl exempt", map[string]any{"dupl": map[string]any{"exempt": []any{"[x"}}}, `dupl.exempt[0]: "[x": syntax error in pattern`},
+		{"unknown dupl field", map[string]any{"dupl": map[string]any{"min_nodes": 9}}, `unknown field "min_nodes"`},
+		{"dupl for disabled dupl", map[string]any{"disable": []any{"dupl"}, "dupl": map[string]any{"tests": true}}, "dupl settings are set but dupl is disabled"},
+		{"missing baseline", map[string]any{"baseline": "testdata/missing.json"}, "baseline: open testdata/missing.json"},
 		{"fileplace for disabled fileplace", map[string]any{"disable": []any{"fileplace"}, "fileplace": map[string]any{"long-lines": 900}}, "fileplace settings are set but fileplace is disabled"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -141,6 +148,44 @@ func TestEmptyidSuffixesReachTheAnalyzer(t *testing.T) {
 	got := findings(t, map[string]any{"emptyid": map[string]any{"suffixes": []any{"Ref"}}}, "emptyid")
 	if len(got) != 1 || !strings.HasPrefix(got[0], table) {
 		t.Errorf("suffixes [Ref]: findings = %q, want one starting %q", got, table)
+	}
+}
+
+func TestDuplSettingsReachTheAnalyzer(t *testing.T) {
+	got := findings(t, nil, "dupl")
+	if len(got) != 1 || !strings.HasPrefix(got[0], "lines 67-84 duplicate lines 46-63 of slop.go (first)") {
+		t.Errorf("default: findings = %q, want second", got)
+	}
+	for _, s := range []map[string]any{{"min-nodes": 1000}, {"min-statements": 20}, {"exempt": []any{"slop.go"}}} {
+		if got := findings(t, map[string]any{"dupl": s}, "dupl"); len(got) != 0 {
+			t.Errorf("dupl %v: findings = %q, want none", s, got)
+		}
+	}
+}
+
+func TestBaselineHoldsEveryAnalyzer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "baseline.json")
+	write := func(content string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(`{"slop": {"dupl": 1, "emptyid": 1, "fileplace:typefile": 1}}`)
+	settings := map[string]any{"baseline": path, "fileplace": map[string]any{"enable": []any{"typefile"}}}
+	for _, name := range []string{"dupl", "emptyid", "fileplace"} {
+		if got := findings(t, settings, name); len(got) != 0 {
+			t.Errorf("%s at its baseline: findings = %q, want none", name, got)
+		}
+	}
+	write(`{"slop": {"dupl": 1, "fileplace:typefile": 1}}`)
+	got := findings(t, settings, "emptyid")
+	if len(got) != 1 || strings.Contains(got[0], "baseline") {
+		t.Errorf("emptyid off the baseline: findings = %q, want byUser's, unnoted", got)
+	}
+	write(`{"slop": {"dupl": 1, "emptyid": 1, "fileplace:typefile": 1}`)
+	if _, err := plugin.New(settings); err == nil || !strings.Contains(err.Error(), "baseline: ") {
+		t.Errorf("a malformed baseline: New error = %v, want baseline: ...", err)
 	}
 }
 

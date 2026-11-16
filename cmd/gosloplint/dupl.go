@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -23,16 +22,7 @@ the copies the per-package dupl analyzer cannot see. It exits 1 on findings,
 // runDupl is `gosloplint dupl`: the dupl analyzer's detector over every
 // package at once.
 func runDupl(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("gosloplint dupl", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	fail := func(err error) int {
-		_, _ = fmt.Fprintf(stderr, "gosloplint dupl: %v\n", err)
-		return 2
-	}
-	fs.Usage = func() {
-		_, _ = io.WriteString(stderr, duplUsage)
-		fs.PrintDefaults()
-	}
+	fs, fail := subcommand("dupl", duplUsage, stderr)
 	var cfg clone.Config
 	clone.BindFlags(fs, &cfg)
 	if err := fs.Parse(args); err != nil {

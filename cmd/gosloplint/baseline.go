@@ -22,16 +22,7 @@ and writes each package's finding count per analyzer check to the file, for
 // runBaseline is `gosloplint baseline`: it records the findings of
 // analyzers, configured by their prefixed flags, as a baseline file.
 func runBaseline(analyzers []*analysis.Analyzer, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("gosloplint baseline", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	fail := func(err error) int {
-		_, _ = fmt.Fprintf(stderr, "gosloplint baseline: %v\n", err)
-		return 2
-	}
-	fs.Usage = func() {
-		_, _ = io.WriteString(stderr, baselineUsage)
-		fs.PrintDefaults()
-	}
+	fs, fail := subcommand("baseline", baselineUsage, stderr)
 	out := fs.String("o", baseline.DefaultFile, "the baseline file to write")
 	for _, a := range analyzers {
 		a.Flags.VisitAll(func(f *flag.Flag) {

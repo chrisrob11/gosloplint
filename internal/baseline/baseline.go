@@ -86,12 +86,24 @@ func Wrap(analyzers []*analysis.Analyzer, load func() (Counts, error)) []*analys
 	out := make([]*analysis.Analyzer, len(analyzers))
 	for i, a := range analyzers {
 		w := *a
-		w.Run = func(pass *analysis.Pass) (any, error) { return f.run(a, pass) }
+		w.Run = func(pass *analysis.Pass) (any, error) {
+			counts, err := f.get()
+			if err != nil {
+				return nil, fmt.Errorf("baseline: %w", err)
+			}
+			var held []analysis.Diagnostic
+			inner := *pass
+			inner.Report = func(d analysis.Diagnostic) { held = append(held, d) }
+			result, err := a.Run(&inner)
+			report(pass, a.Name, counts[pass.Pkg.Path()], held)
+			return result, err
+		}
 		out[i] = &w
 	}
 	return out
 }
 
+// filter reads the counts once for every analyzer it wraps.
 type filter struct {
 	load   func() (Counts, error)
 	once   sync.Once
@@ -99,24 +111,21 @@ type filter struct {
 	err    error
 }
 
-func (f *filter) run(a *analysis.Analyzer, pass *analysis.Pass) (any, error) {
+func (f *filter) get() (Counts, error) {
 	f.once.Do(func() { f.counts, f.err = f.load() })
-	if f.err != nil {
-		return nil, fmt.Errorf("baseline: %w", f.err)
-	}
-	var held []analysis.Diagnostic
-	inner := *pass
-	inner.Report = func(d analysis.Diagnostic) { held = append(held, d) }
-	result, err := a.Run(&inner)
-	byKey := map[string][]analysis.Diagnostic{}
+	return f.counts, f.err
+}
+
+// report reports the findings held from one pass of analyzer whose Key
+// outnumbers its count in recorded.
+func report(pass *analysis.Pass, analyzer string, recorded map[string]int, held []analysis.Diagnostic) {
+	byKey := map[string]int{}
 	for _, d := range held {
-		k := Key(a.Name, d)
-		byKey[k] = append(byKey[k], d)
+		byKey[Key(analyzer, d)]++
 	}
-	recorded := f.counts[pass.Pkg.Path()]
 	for _, d := range held {
-		k := Key(a.Name, d)
-		n, base := len(byKey[k]), recorded[k]
+		k := Key(analyzer, d)
+		n, base := byKey[k], recorded[k]
 		if n <= base {
 			continue
 		}
@@ -125,5 +134,4 @@ func (f *filter) run(a *analysis.Analyzer, pass *analysis.Pass) (any, error) {
 		}
 		pass.Report(d)
 	}
-	return result, err
 }
