@@ -13,7 +13,7 @@ import (
 )
 
 func TestDefaultRules(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), fileplace.Analyzer, "receiver", "testname", "grabbag", "tiny")
+	analysistest.Run(t, analysistest.TestData(), fileplace.Analyzer, "receiver", "testname", "cmdmain", "grabbag", "tiny")
 }
 
 func TestOffByDefaultRules(t *testing.T) {

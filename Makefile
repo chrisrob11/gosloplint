@@ -6,9 +6,14 @@ GOLANGCI_LINT ?= golangci-lint
 # lower it to pass.
 COVER_FLOOR ?= 93
 
-GORELEASER ?= go run github.com/goreleaser/goreleaser/v2@latest
+# GORELEASER is pinned to a release whose go.mod needs no newer Go than mise.toml's: @latest
+# needed go 1.27.4 and made the go command download that toolchain. GOTOOLCHAIN=local turns a
+# future mismatch into an error instead. Bump it with the Go version (the release workflow's
+# goreleaser-action downloads a binary, so it is unaffected).
+GORELEASER_VERSION ?= v2.17.0
+GORELEASER ?= GOTOOLCHAIN=local go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 
-.PHONY: build test cover cover-check lint fmt fmt-check ci install plugin-e2e release-check
+.PHONY: build test cover cover-check lint fmt fmt-check ci install plugin-e2e release-check release-snapshot
 
 build:
 	go build -o bin/gosloplint ./cmd/gosloplint
@@ -56,3 +61,7 @@ plugin-e2e:
 # release-check validates .goreleaser.yaml without building or publishing.
 release-check:
 	$(GORELEASER) check
+
+# release-snapshot builds the release archives into dist/ without publishing.
+release-snapshot:
+	$(GORELEASER) release --snapshot --clean

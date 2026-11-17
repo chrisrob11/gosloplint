@@ -20,6 +20,7 @@ import (
 	"github.com/chrisrob11/gosloplint/fileplace"
 	"github.com/chrisrob11/gosloplint/internal/baseline"
 	"github.com/chrisrob11/gosloplint/internal/camel"
+	"github.com/chrisrob11/gosloplint/internal/ignore"
 	"github.com/chrisrob11/gosloplint/steer"
 	"github.com/chrisrob11/gosloplint/vocab"
 )
@@ -193,6 +194,7 @@ func build(s Settings) ([]*analysis.Analyzer, error) {
 		}
 		out = append(out, a)
 	}
+	out = ignore.Wrap(out, gosloplint.Checks())
 	if s.Baseline == "" {
 		return out, nil
 	}

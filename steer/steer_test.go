@@ -2,6 +2,7 @@ package steer_test
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,7 +13,13 @@ import (
 )
 
 func TestReturnChecks(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), steer.Analyzer, "fixture", "dictated", "gen", "example.com/hooks")
+	analysistest.Run(t, analysistest.TestData(), steer.Analyzer, "fixture", "dictated", "gen", "api", "example.com/hooks")
+}
+
+// TestReturnChecksReadTheModule runs in module mode, where the driver names
+// the package's module: a path sharing three elements is not enough.
+func TestReturnChecksReadTheModule(t *testing.T) {
+	analysistest.Run(t, filepath.Join(analysistest.TestData(), "mod"), steer.Analyzer, "example.com/app/flags")
 }
 
 func TestCleanPackagesReportNothing(t *testing.T) {

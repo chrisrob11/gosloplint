@@ -52,6 +52,67 @@ error. It takes the dupl flags, unprefixed: `-min-nodes`, `-min-statements`,
 `-tests` and `-exempt`. A copy within one package is reported both here and
 by the dupl analyzer. The package patterns default to `./...`.
 
+### Suppressing one finding: `//gosloplint:ignore`
+
+A finding that is wrong at one site is suppressed there with a directive,
+and the reason is required:
+
+```go
+//gosloplint:ignore steer:returns-interface the plugin API takes a Handler
+func handler() Handler { /* ... */ }
+
+var userID string //gosloplint:ignore emptyid an empty ID is every user
+```
+
+The syntax is `//gosloplint:ignore <analyzer>[:<check>] <reason>`, with no
+space after `//`. `<analyzer>` is an analyzer's name; `<check>`, for
+comment, fileplace and steer, narrows it to one of their checks (the
+`analyzer:check` names of the [baseline](#baseline-adopting-gosloplint-on-existing-code)),
+and without it every check of the analyzer is suppressed. A directive
+covers:
+
+- its own line, so it can trail the code it is about;
+- the line below it, so it can sit above a statement or a declaration;
+- in a declaration's doc comment (a func, a `type`, `var` or `const`
+  declaration, or one spec of a group), the whole declaration with its
+  doc. gofmt moves a directive line to the end of a doc comment, so it
+  always sits right above the declaration.
+
+A finding on a file's package clause (fileplace, comment's density) takes
+the directive on the line above `package`. A dupl finding is reported at
+the later copy, so the directive goes there.
+
+A directive that cannot be trusted is itself reported, with the prefix
+`ignore:`, so suppressions do not rot silently:
+
+- one with no reason, which then suppresses nothing;
+- one naming no analyzer, an unknown analyzer, or a check its analyzer
+  does not have;
+- one that suppresses no finding (stale): delete it. Stale is judged
+  against the configuration the run has: a directive for a check that is
+  disabled, or for a finding that only another setting produces, is stale
+  there. A directive for an analyzer that is not running is not judged.
+
+Each analyzer reports the directives naming it; one naming no known
+analyzer is reported by the first analyzer of the set, comment unless the
+plugin disables it, so a run selecting analyzers by flag (`gosloplint
+-steer`) without comment leaves those unreported. Directives in generated files are not read. `gosloplint
+dupl` honours `dupl` directives too, and the baseline counts only the
+findings no directive suppresses.
+
+It is implemented once, as a wrapper around every analyzer's run, so it
+works wherever gosloplint runs: the binary, `go vet -vettool`, and the
+golangci-lint plugin. golangci-lint's own `//nolint:gosloplint` also works
+in the plugin, but only there: `go vet` and the binary do not read it, it
+needs no reason, and it suppresses every gosloplint analyzer at once.
+
+Two older spellings still work as aliases: `//gosloplint:comment-ok
+<reason>` inside a comment block exempts that block from comment's
+`length` check, and `//gosloplint:dupl-ok <reason>` in a function's doc
+comment leaves the function out of dupl's comparison entirely, on both
+sides of a copy. They are reported when they have no reason, but not when
+stale.
+
 ### Baseline: adopting gosloplint on existing code
 
 A baseline holds each package at the findings it has today, so a lint can
@@ -261,7 +322,9 @@ func (s *Store) Load(id string) (*Row, error) {
 
 One block that needs the room is exempted with a directive line inside it,
 and the reason is required: an escape with no reason is reported, and
-exempts nothing.
+exempts nothing. It is an alias kept from before the general
+[`//gosloplint:ignore comment:length <reason>`](#suppressing-one-finding-gosloplintignore),
+which works on a doc comment too, and is reported when stale.
 
 ```go
 // Grammar, one production per line:
@@ -376,8 +439,10 @@ since two tables of one shape are data, not a decision made twice; a
 switch's or select's list of clauses, a dispatch table (each clause body is
 still compared on its own); a statement repeated in place, two overlapping
 runs of one block; generated files; `_test.go` files unless `tests` is set,
-since test tables and setup repeat by design. A function is exempted with a
-line in its doc comment, and the reason is required:
+since test tables and setup repeat by design. A finding is suppressed with
+[`//gosloplint:ignore dupl <reason>`](#suppressing-one-finding-gosloplintignore)
+at the later copy. The older alias leaves a function out of the comparison
+entirely, from a line in its doc comment, and the reason is required:
 
 ```go
 //gosloplint:dupl-ok the two drivers must stay independent for the benchmark
@@ -532,8 +597,16 @@ type whose files pass `long-lines` in `<type>_<concern>.go`, and methods
 and `foo_<suffix>_test.go` for a source `foo.go`, with the suffixes
 `internal`, `integration`, `external`, `bench`, `fuzz` and `example`; a
 stem naming a declaration of the package (`newer_test.go` testing `Newer`);
-a stem starting with the package's name; `example_test.go`,
-`example_*_test.go`, `export_test.go` and `main_test.go`. `grabbag`: a part
+the package's general test file, `<pkg>_test.go`, or one named for the
+directory, alone or with one of those suffixes; `<pkg>_<x>_test.go` only
+when `<x>` names a source file of the directory or a declaration of the
+package, and in package `main` also a subcommand: a string `case` of a
+switch on an argument (`os.Args[1]`, `args[0]`, `fs.Arg(0)`), or the first
+word of the `Name` or `Use` of a composite literal of a type named
+`Command` (urfave/cli, cobra); `example_test.go`, `example_*_test.go`,
+`export_test.go` and `main_test.go`. So `main_ask_test.go` passes in a
+command with an `ask` subcommand or an `askCmd` function, and
+`gadget_extra_test.go` names nothing. `grabbag`: a part
 that names a type of the package (`types.go` holding `Types`), and the
 package's own name (`helpers.go` in package `helpers`). `tiny`: a package's
 only file.
@@ -624,7 +697,21 @@ Checks:
   of one. `error` is not reported, nor is an interface from the standard
   library (`io.Reader`, `context.Context`: the abstractions Go code trades
   in) or a sealed interface (one with an unexported method, so a sum type
-  only its own package implements).
+  only its own package implements). Nor is a slice, array or map of an
+  interface another module declares when another module's API dictates
+  it: the function's body puts values of two or more concrete types into a
+  value of the result type (as composite literal elements, `append`
+  arguments or index assignments, outside any func literal), or a call of
+  the function is passed straight (as a struct literal field, a field
+  assigned, or an argument, spread or not) to a field or parameter of
+  exactly that type another module declares. `func flags() []cli.Flag`
+  holding a `*cli.StringFlag` and a `*cli.BoolFlag` for `cli.Command.Flags`
+  has no struct to return instead. One holding a single concrete type and
+  never passed straight to such an API is still reported, and so is a lone
+  `cli.Flag` result however many types it holds. The module is the one the
+  driver reports (`go vet`, the multichecker, golangci-lint); a driver that
+  reports none is answered from the import paths, which must share their
+  first elements, up to three, to be one module.
 - `returns-one-concrete`: an interface result, the standard library's
   included, where every `return` returns the same concrete type, so the
   interface hides nothing.
@@ -722,6 +809,15 @@ if err != nil {
 Not reported: an assertion helper with no result, a helper that returns an
 `error`, and setup fixtures without the `must` prefix (`openDB(t)`), which
 build the world around the code under test rather than wrap it.
+
+The rule keys on the `must` prefix, so renaming a helper to dodge it
+(`mustGit` to `git`) silences the finding and keeps the defect. Fix the
+helper instead: return the error and check it at the call site, or split
+setup from reading output. A setup helper that returns nothing may fail
+the test itself, since no caller reads a value from it; a helper whose
+result a test reads returns `(T, error)`. prfoundry split `mustGit` that
+way into `runGit(t, ...)`, for setup, and `gitOut(...) (string, error)`,
+for a test that reads git's output and checks its error where it reads.
 
 Flags: none.
 

@@ -2,6 +2,7 @@ package fileplace
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
 	"os"
 	"path/filepath"
@@ -228,9 +229,8 @@ func (p *pkg) namesASource(stem string) bool {
 }
 
 // testName reports each _test.go file that names no source file of its
-// directory and no declaration of the package it tests. A test file named
-// for the package, alone or with a suffix, is the package's own, and
-// testStems are Go's conventions.
+// directory and no declaration of the package it tests. The package's own
+// test files and testStems, Go's conventions, are not reported.
 func (p *pkg) testName() {
 	var decls []string
 	for _, f := range p.files {
@@ -246,13 +246,112 @@ func (p *pkg) testName() {
 		}) {
 			continue
 		}
-		first, _, _ := strings.Cut(f.stem, "_")
-		if norm(first) == norm(p.name) || norm(f.stem) == norm(p.dirName) {
+		if p.ownTest(f.stem) {
 			continue
 		}
 		p.report(TestName, f, nil, f.name+" names no source file in its directory: name it for the file whose code it tests "+
 			"(foo_test.go, foo_internal_test.go), or fold its tests into that file's test")
 	}
+}
+
+// ownTest reports whether a test stem is the package's own: the package's
+// or directory's name, alone or with one of testSuffixes; or the package's
+// name, "_", and a source file's stem or, in package main, a subcommand's
+// name. A stem naming a declaration is read before this.
+func (p *pkg) ownTest(stem string) bool {
+	base := stem
+	for _, suf := range testSuffixes {
+		base = strings.TrimSuffix(base, suf)
+	}
+	if norm(base) == norm(p.name) || norm(base) == norm(p.dirName) {
+		return true
+	}
+	rest, ok := strings.CutPrefix(base, p.name+"_")
+	if !ok {
+		return false
+	}
+	return p.namesASource(rest) || p.name == "main" && slices.Contains(p.subcommands(), norm(rest))
+}
+
+// subcommands are the norm'd names of the subcommands a command's non-test
+// files declare: a string case of a switch on an argument (os.Args[1],
+// args[0], fs.Arg(0)), and the first word of the Name or Use of a composite
+// literal of a type named Command (urfave/cli, cobra, ffcli).
+func (p *pkg) subcommands() []string {
+	var out []string
+	add := func(e ast.Expr) {
+		if lit, ok := e.(*ast.BasicLit); ok {
+			if s, err := strconv.Unquote(lit.Value); err == nil && lit.Kind == token.STRING {
+				if word, _, _ := strings.Cut(strings.TrimSpace(s), " "); word != "" {
+					out = append(out, norm(word))
+				}
+			}
+		}
+	}
+	for _, f := range p.files {
+		if f.test {
+			continue
+		}
+		ast.Inspect(f.ast, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.SwitchStmt:
+				if !isArg(n.Tag) {
+					break
+				}
+				for _, s := range n.Body.List {
+					for _, e := range s.(*ast.CaseClause).List {
+						add(e)
+					}
+				}
+			case *ast.CompositeLit:
+				if !p.isCommand(n) {
+					break
+				}
+				for _, e := range n.Elts {
+					if kv, ok := e.(*ast.KeyValueExpr); ok {
+						if key, ok := kv.Key.(*ast.Ident); ok && (key.Name == "Name" || key.Name == "Use") {
+							add(kv.Value)
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+	return out
+}
+
+// isArg reports whether e reads a command-line argument: an index of a
+// value named Args or args, or a call of a function or method named Arg.
+func isArg(e ast.Expr) bool {
+	switch e := ast.Unparen(e).(type) {
+	case *ast.IndexExpr:
+		switch x := e.X.(type) {
+		case *ast.Ident:
+			return x.Name == "args" || x.Name == "Args"
+		case *ast.SelectorExpr:
+			return x.Sel.Name == "Args"
+		}
+	case *ast.CallExpr:
+		switch fun := e.Fun.(type) {
+		case *ast.Ident:
+			return fun.Name == "Arg"
+		case *ast.SelectorExpr:
+			return fun.Sel.Name == "Arg"
+		}
+	}
+	return false
+}
+
+// isCommand reports whether lit is of a struct type named Command, or a
+// pointer to one.
+func (p *pkg) isCommand(lit *ast.CompositeLit) bool {
+	t := p.pass.TypesInfo.TypeOf(lit)
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = ptr.Elem()
+	}
+	named, ok := types.Unalias(t).(*types.Named)
+	return ok && named.Obj().Name() == "Command"
 }
 
 // testedNames are the package-level names, and the method names, that the

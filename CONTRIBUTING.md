@@ -21,8 +21,11 @@ Analyzer in its own top-level package named for it (`emptyskip/`, `vocab/`, ...)
 
 1. **The package.** Export `Analyzer` with a `Name` equal to the package name, a `Doc` that starts
    with `<name>:`, and a `URL` of `https://github.com/chrisrob11/gosloplint#<name>`
-   (`gosloplint_test.go` checks all three). The package comment says what is reported, what is
-   deliberately not reported, and how a finding is suppressed, if it can be.
+   (`gosloplint_test.go` checks all three). The package comment says what is reported and what is
+   deliberately not reported. Every finding can be suppressed with `//gosloplint:ignore`, which
+   wraps each analyzer's run (`internal/ignore`); an analyzer of several checks sets each
+   finding's `Category` to its check and lists its checks in `Checks()` in `gosloplint.go`, so a
+   directive can name one.
 2. **Tests.** Use `analysistest` against `testdata/src/<pkg>`, with a `// want` comment on every
    line that should be reported, and cases for what must not be.
 3. **Registration.** Add it to `Analyzers()` in `gosloplint.go`, and to the plugin in `plugin/`
@@ -69,6 +72,8 @@ Before tagging:
 - The README's golangci-lint `.custom-gcl.yml` snippet pins the plugin to a gosloplint tag
   (`version: v0.1.0`). Bump it to the tag you are about to push, in the same PR as anything
   else the release needs.
-- `make release-check` validates `.goreleaser.yaml`, and
-  `go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean` builds the
-  archives into `dist/` without publishing (delete `dist/` afterwards).
+- `make release-check` validates `.goreleaser.yaml`, and `make release-snapshot` builds the
+  archives into `dist/` without publishing (delete `dist/` afterwards). Both run GoReleaser
+  through `go run` at the version `GORELEASER_VERSION` in the Makefile pins, one whose `go.mod`
+  needs no newer Go than `mise.toml`'s, with `GOTOOLCHAIN=local` so a mismatch fails instead of
+  downloading a toolchain. When you bump Go, bump it too (`@latest` once needed go 1.27.4).
