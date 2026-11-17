@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/chrisrob11/gosloplint/cannotfail"
 	"github.com/chrisrob11/gosloplint/comment"
 	"github.com/chrisrob11/gosloplint/ctxthread"
 	"github.com/chrisrob11/gosloplint/dupl"
@@ -22,6 +23,7 @@ import (
 // Analyzers returns every gosloplint analyzer.
 func Analyzers() []*analysis.Analyzer {
 	return []*analysis.Analyzer{
+		cannotfail.Analyzer,
 		comment.Analyzer,
 		ctxthread.Analyzer,
 		dupl.Analyzer,
@@ -43,6 +45,7 @@ func Checks() map[string][]string {
 	for _, a := range Analyzers() {
 		out[a.Name] = nil
 	}
+	out[cannotfail.Analyzer.Name] = slices.Clone(cannotfail.Checks)
 	out[comment.Analyzer.Name] = slices.Clone(comment.Checks)
 	out[fileplace.Analyzer.Name] = slices.Clone(fileplace.Rules)
 	out[steer.Analyzer.Name] = slices.Clone(steer.Checks)

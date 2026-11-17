@@ -14,6 +14,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/chrisrob11/gosloplint"
+	"github.com/chrisrob11/gosloplint/cannotfail"
 	"github.com/chrisrob11/gosloplint/comment"
 	"github.com/chrisrob11/gosloplint/dupl"
 	"github.com/chrisrob11/gosloplint/emptyid"
@@ -38,14 +39,22 @@ type Settings struct {
 	// Baseline is a file written by `gosloplint baseline`: each analyzer
 	// reports a package's findings of a check only once they outnumber its
 	// count there.
-	Baseline  string            `json:"baseline"`
-	Disable   []string          `json:"disable"`
-	Comment   CommentSettings   `json:"comment"`
-	Dupl      DuplSettings      `json:"dupl"`
-	Emptyid   EmptyidSettings   `json:"emptyid"`
-	Fileplace FileplaceSettings `json:"fileplace"`
-	Steer     SteerSettings     `json:"steer"`
-	Vocab     VocabSettings     `json:"vocab"`
+	Baseline   string             `json:"baseline"`
+	Disable    []string           `json:"disable"`
+	Cannotfail CannotfailSettings `json:"cannotfail"`
+	Comment    CommentSettings    `json:"comment"`
+	Dupl       DuplSettings       `json:"dupl"`
+	Emptyid    EmptyidSettings    `json:"emptyid"`
+	Fileplace  FileplaceSettings  `json:"fileplace"`
+	Steer      SteerSettings      `json:"steer"`
+	Vocab      VocabSettings      `json:"vocab"`
+}
+
+// CannotfailSettings mirrors cannotfail.Settings.
+type CannotfailSettings struct {
+	Disable     []string `json:"disable"`
+	Enable      []string `json:"enable"`
+	AssertFuncs []string `json:"assert-funcs"`
 }
 
 // CommentSettings mirrors comment.Settings. A zero number is its default.
@@ -155,12 +164,14 @@ func build(s Settings) ([]*analysis.Analyzer, error) {
 	if disabled["vocab"] && len(s.Vocab.Words) > 0 {
 		return nil, errors.New("vocab.words is set but vocab is disabled")
 	}
+	cannotfailS := cannotfail.Settings(s.Cannotfail)
 	commentS, duplS, fileplaceS, steerS := commentSettings(s.Comment), dupl.Settings(s.Dupl), fileplace.Settings(s.Fileplace), steer.Settings(s.Steer)
 	for _, c := range []struct {
 		name     string
 		zero     bool
 		validate func() error
 	}{
+		{"cannotfail", reflect.ValueOf(s.Cannotfail).IsZero(), cannotfailS.Validate},
 		{"comment", reflect.ValueOf(s.Comment).IsZero(), commentS.Validate},
 		{"dupl", reflect.ValueOf(s.Dupl).IsZero(), duplS.Validate},
 		{"fileplace", reflect.ValueOf(s.Fileplace).IsZero(), fileplaceS.Validate},
@@ -179,6 +190,8 @@ func build(s Settings) ([]*analysis.Analyzer, error) {
 		switch {
 		case disabled[a.Name]:
 			continue
+		case a.Name == "cannotfail":
+			a = cannotfail.New(cannotfailS)
 		case a.Name == "comment":
 			a = comment.New(commentS)
 		case a.Name == "dupl":

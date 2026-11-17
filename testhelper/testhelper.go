@@ -19,7 +19,8 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/types/typeutil"
+
+	"github.com/chrisrob11/gosloplint/internal/testapi"
 )
 
 // Analyzer reports must* test helpers that fail the test on a hidden error.
@@ -32,7 +33,7 @@ var Analyzer = &analysis.Analyzer{
 
 func run(pass *analysis.Pass) (any, error) {
 	for _, file := range pass.Files {
-		if !strings.HasSuffix(pass.Fset.File(file.Pos()).Name(), "_test.go") {
+		if !testapi.IsTestFile(pass.Fset, file) {
 			continue
 		}
 		for _, decl := range file.Decls {
@@ -64,16 +65,7 @@ func isMust(name string) bool {
 // testing.TB.
 func takesTesting(params *types.Tuple) bool {
 	for p := range params.Variables() {
-		t := types.Unalias(p.Type())
-		ptr, isPtr := t.(*types.Pointer)
-		if isPtr {
-			t = types.Unalias(ptr.Elem())
-		}
-		named, ok := t.(*types.Named)
-		if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != "testing" {
-			continue
-		}
-		switch name := named.Obj().Name(); {
+		switch name, isPtr := testapi.TestingName(p.Type()); {
 		case isPtr && (name == "T" || name == "B"), !isPtr && name == "TB":
 			return true
 		}
@@ -108,14 +100,7 @@ func callsFatal(pass *analysis.Pass, body *ast.BlockStmt) bool {
 		if !ok {
 			return true
 		}
-		fn, ok := typeutil.Callee(pass.TypesInfo, call).(*types.Func)
-		if !ok || fn.Pkg() == nil || fn.Pkg().Path() != "testing" || fn.Signature().Recv() == nil {
-			return true
-		}
-		switch fn.Name() {
-		case "Fatal", "Fatalf", "FailNow":
-			found = true
-		}
+		found = testapi.IsTestingMethod(pass.TypesInfo, call, "Fatal", "Fatalf", "FailNow")
 		return !found
 	})
 	return found
