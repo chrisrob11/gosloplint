@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -211,4 +212,67 @@ func TestAppendedToASlice(t *testing.T) {
 	var all []*testing.T
 	all = append(all, t)
 	_ = all
+}
+
+func TestSavesWithMust(t *testing.T) { MustSave("x") }
+
+func TestCompiles(t *testing.T) { _ = regexp.MustCompile("a") }
+
+func TestMustangIsNotMust(t *testing.T) { _ = Mustang() } // want `no-assert: TestMustangIsNotMust calls no`
+
+// mustShow is a test file's Must helper, so it is judged by its body.
+func mustShow(t *testing.T, v any) { t.Logf("%v", v) }
+
+func TestQuietMustHelper(t *testing.T) { mustShow(t, query()) } // want `no-assert: TestQuietMustHelper calls no`
+
+func TestConcurrentQueries(t *testing.T) {
+	go query()
+	_ = query()
+}
+
+func TestSafeToCall(t *testing.T) {
+	// Every method is safe to call without panicking.
+	_ = query()
+}
+
+func TestSubtestSmoke(t *testing.T) {
+	t.Run("save", func(t *testing.T) { MustSave("x") })
+	t.Run("no panicking", func(t *testing.T) { _ = query() })
+	t.Run("quiet", func(t *testing.T) { _ = query() }) // want `empty-subtest: subtest "quiet" calls no`
+}
+
+// TestHelperProcess is run as a subprocess by a test that asserts on it.
+func TestHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER") != "1" {
+		return
+	}
+	_ = query()
+}
+
+func TestGatedButNotFirst(t *testing.T) { // want `no-assert: TestGatedButNotFirst calls no`
+	_ = query()
+	if os.Getenv("GO_WANT_HELPER") != "1" {
+		return
+	}
+}
+
+func TestGatedOnAnotherCall(t *testing.T) { // want `no-assert: TestGatedOnAnotherCall calls no`
+	if fmt.Sprint(1) != "1" {
+		return
+	}
+	_ = query()
+}
+
+func TestGatedOnAnotherOsCall(t *testing.T) { // want `no-assert: TestGatedOnAnotherOsCall calls no`
+	if os.Getpagesize() == 0 {
+		return
+	}
+	_ = query()
+}
+
+func TestGatedOnALocalGetenv(t *testing.T) { // want `no-assert: TestGatedOnALocalGetenv calls no`
+	if Getenv("GO_WANT_HELPER") != "1" {
+		return
+	}
+	_ = query()
 }

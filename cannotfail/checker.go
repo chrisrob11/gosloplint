@@ -200,6 +200,9 @@ func (c *checker) callFails(call *ast.CallExpr) bool {
 		if pkg := callee.Pkg(); pkg != nil && exits[pkg.Path()+"."+callee.Name()] {
 			return true
 		}
+		if mustName(callee.Name()) && !strings.HasSuffix(c.pass.Fset.Position(callee.Pos()).Filename, "_test.go") {
+			return true
+		}
 		if _, local := c.decls[callee.Origin()]; local {
 			return c.asserts[callee.Origin()]
 		}
@@ -213,6 +216,19 @@ func (c *checker) callFails(call *ast.CallExpr) bool {
 		return !lit
 	}
 	return c.handsTesting(call)
+}
+
+// mustName reports whether name is Must or must followed by an upper-case
+// letter: by Go convention such a function panics when it fails, and a
+// panic fails the test. Only a test file's own Must helper is judged by its
+// body instead, since a test file is where a helper is misnamed most.
+func mustName(name string) bool {
+	rest, ok := strings.CutPrefix(name, "Must")
+	if !ok {
+		rest, ok = strings.CutPrefix(name, "must")
+	}
+	r, _ := utf8.DecodeRuneInString(rest)
+	return ok && unicode.IsUpper(r)
 }
 
 // handsTesting reports whether call passes a testing value, as an argument
