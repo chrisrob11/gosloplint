@@ -20,6 +20,11 @@ func (s Span) compare(t Span) int {
 	return cmp.Or(cmp.Compare(s.File, t.File), cmp.Compare(s.Start, t.Start), cmp.Compare(s.End, t.End))
 }
 
+// overlaps reports whether s and t share a line of one file.
+func (s Span) overlaps(t Span) bool {
+	return s.File == t.File && s.Start <= t.End && t.Start <= s.End
+}
+
 // widen is the smallest span covering s and t, both in one declaration.
 func (s Span) widen(t Span) Span {
 	if t.Start < s.Start {

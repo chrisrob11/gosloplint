@@ -13,7 +13,7 @@ import (
 )
 
 func TestCopiesAreReportedAtTheLaterOccurrence(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), dupl.Analyzer, "copied", "renamed", "bare")
+	analysistest.Run(t, analysistest.TestData(), dupl.Analyzer, "copied", "renamed", "bare", "clauses", "calls")
 }
 
 func TestSimilarButDifferentCodeIsClean(t *testing.T) {
