@@ -90,7 +90,7 @@ linters:
 | [fileplace](docs/analyzers/fileplace.md) | code in the wrong file, and file names and sizes that say nothing about what a file holds |
 | [narration](docs/analyzers/narration.md) | comments that narrate how the code came to be, and a second warning marker in one declaration |
 | [selfassert](docs/analyzers/selfassert.md) | a test assertion that compares a value to itself |
-| [steer](docs/analyzers/steer.md) | results typed `any` or an interface, an interface with one implementation, recursion with no depth bound |
+| [steer](docs/analyzers/steer.md) | results typed `any` or an interface, an interface with one implementation, recursion with no depth bound, a second name for one function |
 | [testhelper](docs/analyzers/testhelper.md) | a `must*` test helper that hides an error from the call site |
 | [vocab](docs/analyzers/vocab.md) | identifiers that contain a banned word |
 

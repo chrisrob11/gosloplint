@@ -15,6 +15,19 @@
 //   - unguarded-recursion: a self- or mutually recursive group of functions
 //     in which no function names a depth. Off unless RecursionPackages (the
 //     -recursion-packages flag) names the package.
+//   - twin-wrapper: an exported function or method whose whole body calls
+//     the unexported one of its name with the first letter lowercased (Fail
+//     and fail), of the same receiver and signature, passing its parameters
+//     through unchanged and in order.
+//   - alias: any other such forwarder: a function calling another of the
+//     package's functions, or a method another method of its receiver, of
+//     an identical signature, with its parameters unchanged and in order.
+//
+// The forwarder checks skip test files, a function or callee used as a
+// value outside test files, a method of the name and signature of a method
+// of a named interface the package can see (only the name and arity, for a
+// generic interface's), linkname, noinline and Deprecated: functions, and a
+// callee that is recursive, bodiless, or built per platform.
 //
 // A result is that of any func type in the package: functions, methods,
 // closures, func-typed fields, parameters and named func types, interface
@@ -50,7 +63,7 @@ func New(s Settings) *analysis.Analyzer {
 func newAnalyzer(s *Settings, withFlags bool) *analysis.Analyzer {
 	a := &analysis.Analyzer{
 		Name: "steer",
-		Doc:  "steer: report results typed any or an interface, interfaces with one implementation, and unbounded recursion\n\nChecks: returns-any, returns-interface, returns-one-concrete, sole-implementation, unguarded-recursion (only in -recursion-packages). -disable turns checks off.",
+		Doc:  "steer: report results typed any or an interface, interfaces with one implementation, unbounded recursion, and second names for one function\n\nChecks: returns-any, returns-interface, returns-one-concrete, sole-implementation, unguarded-recursion (only in -recursion-packages), twin-wrapper, alias. -disable turns checks off.",
 		URL:  "https://github.com/chrisrob11/gosloplint#steer",
 	}
 	a.Run = func(pass *analysis.Pass) (any, error) {
@@ -62,7 +75,7 @@ func newAnalyzer(s *Settings, withFlags bool) *analysis.Analyzer {
 	}
 	if withFlags {
 		a.Flags.Var(listflag.List{Items: &s.Disable}, "disable",
-			"comma-separated checks not to run: returns-any, returns-interface, returns-one-concrete, sole-implementation, unguarded-recursion")
+			"comma-separated checks not to run: returns-any, returns-interface, returns-one-concrete, sole-implementation, unguarded-recursion, twin-wrapper, alias")
 		a.Flags.Var(listflag.List{Items: &s.RecursionPackages}, "recursion-packages",
 			`comma-separated import path patterns whose recursion unguarded-recursion reads ("..." matches anything)`)
 	}

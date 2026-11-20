@@ -83,7 +83,9 @@ compiled in, and `.golangci.yml` enables it like any other linter.
                # Checks to turn off: history, warnsign.
                disable: [warnsign]
              steer:
-               # Checks to turn off.
+               # Checks to turn off: returns-any, returns-interface,
+               # returns-one-concrete, sole-implementation,
+               # unguarded-recursion, twin-wrapper, alias.
                disable: [returns-interface]
                # Packages unguarded-recursion reads; default none.
                recursion-packages: [example.com/app/parse/...]
