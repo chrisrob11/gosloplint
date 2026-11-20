@@ -161,11 +161,68 @@ func TestOtherAssert(t *testing.T) {
 // Reported: the inner a is a different variable, so assigning it does not
 // make the outer a "assigned twice". Matching by name would miss this.
 func TestShadowed(t *testing.T) {
-	a := newID()
-	b := newID()
 	{
 		a := recordPrefix("x")
 		_ = a
 	}
+	a := newID()
+	b := newID()
 	require.Equal(t, a, b) // want `require.Equal compares a and b, which hold the same initialiser newID\(\)`
+}
+
+// Reported: what sits between the two definitions and the comparison calls
+// nothing and assigns neither.
+func TestAliasedInitQuietBetween(t *testing.T) {
+	a := newID()
+	n := len("x")
+	b := newID()
+	_ = n
+	require.Equal(t, a, b) // want `require.Equal compares a and b, which hold the same initialiser newID\(\)`
+}
+
+// Not reported: a before/after snapshot. The call between may change what
+// the initialiser reads, and the test asserts it did not.
+func TestSnapshotAroundACall(t *testing.T) {
+	before := checksum("cfg")
+	rewrite("cfg")
+	after := checksum("cfg")
+	require.Equal(t, before, after)
+}
+
+// Not reported: the call between the definitions comes after the first.
+func TestSnapshotCallAfterBoth(t *testing.T) {
+	before := checksum("cfg")
+	after := checksum("cfg")
+	rewrite("cfg")
+	require.Equal(t, before, after)
+}
+
+// Not reported: the two definitions sit in different blocks, as a snapshot
+// taken outside a subtest and one taken inside it do.
+func TestSnapshotInASubtest(t *testing.T) {
+	before := checksum("cfg")
+	t.Run("revert", func(t *testing.T) {
+		after := checksum("cfg")
+		require.Equal(t, before, after)
+	})
+}
+
+// Not reported: a call in the loop body before the comparison.
+func TestSnapshotNestedCall(t *testing.T) {
+	plain := columnarFamily("root", Database("db", "t"))
+	other := columnarFamily("root", Database("db", "t"))
+	for name := range plain {
+		rewrite(name)
+		assert.Equal(t, plain[name], other[name])
+	}
+}
+
+// Reported: the definitions and the comparison share a case clause.
+func TestAliasedInitInACase(t *testing.T) {
+	switch len(t.Name()) {
+	case 0:
+		a := newID()
+		b := newID()
+		require.Equal(t, a, b) // want `require.Equal compares a and b, which hold the same initialiser newID\(\)`
+	}
 }

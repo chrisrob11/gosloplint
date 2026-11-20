@@ -14,6 +14,9 @@
 //   - two locals given the same initialiser, each assigned once, then compared
 //     to each other, directly or inside larger expressions that differ only in
 //     which of the two they name: a := f(); b := f(); assert.Equal(t, a[k], b[k]).
+//     Only when nothing between the two definitions and the comparison could
+//     change either value (the rule of internal/sideeffect): a call between
+//     them makes the pair a before/after snapshot, which is a real check.
 //
 // "The same expression" is decided on the printed syntax tree, so formatting
 // does not matter. Two different expressions that happen to evaluate to the
@@ -28,10 +31,12 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/chrisrob11/gosloplint/internal/sideeffect"
 	"github.com/chrisrob11/gosloplint/internal/testapi"
 )
 
@@ -95,7 +100,8 @@ func checkBinary(pass *analysis.Pass, bin *ast.BinaryExpr) {
 // uninteresting, and two make(...) containers are usually filled by
 // different routes before they are compared.
 func checkAliasedInits(pass *analysis.Pass, fn *ast.FuncDecl) {
-	inits, counts := collectInits(pass, fn)
+	inits, counts, defs := collectInits(pass, fn)
+	parents := parentsOf(fn.Body)
 	ast.Inspect(fn.Body, func(n ast.Node) bool {
 		var x, y ast.Expr
 		var name string
@@ -121,7 +127,7 @@ func checkAliasedInits(pass *analysis.Pass, fn *ast.FuncDecl) {
 				if u == v || counts[u] != 1 || counts[v] != 1 || inits[u] == "" || inits[u] != inits[v] {
 					continue
 				}
-				if alphaRename(rx, u.Name()) == alphaRename(ry, v.Name()) {
+				if alphaRename(rx, u.Name()) == alphaRename(ry, v.Name()) && quietBetween(pass, parents, defs[u], defs[v], n, u, v) {
 					pass.Reportf(n.Pos(), "%s compares %s and %s, which hold the same initialiser %s",
 						name, u.Name(), v.Name(), inits[u])
 					return true
@@ -133,10 +139,12 @@ func checkAliasedInits(pass *analysis.Pass, fn *ast.FuncDecl) {
 }
 
 // collectInits maps each local assigned exactly once in fn to its rendered
-// initialiser, and counts assignments so a reassigned local is discarded.
-func collectInits(pass *analysis.Pass, fn *ast.FuncDecl) (map[types.Object]string, map[types.Object]int) {
+// initialiser and the node assigning it, and counts assignments so a
+// reassigned local is discarded.
+func collectInits(pass *analysis.Pass, fn *ast.FuncDecl) (map[types.Object]string, map[types.Object]int, map[types.Object]ast.Node) {
 	inits := map[types.Object]string{}
 	counts := map[types.Object]int{}
+	defs := map[types.Object]ast.Node{}
 	obj := func(e ast.Expr) types.Object {
 		id, ok := e.(*ast.Ident)
 		if !ok || id.Name == "_" {
@@ -144,7 +152,7 @@ func collectInits(pass *analysis.Pass, fn *ast.FuncDecl) (map[types.Object]strin
 		}
 		return pass.TypesInfo.ObjectOf(id)
 	}
-	note := func(lhs, rhs []ast.Expr) {
+	note := func(at ast.Node, lhs, rhs []ast.Expr) {
 		if len(lhs) != 1 || len(rhs) != 1 {
 			// One name's value is not a standalone expression here.
 			for _, l := range lhs {
@@ -159,6 +167,7 @@ func collectInits(pass *analysis.Pass, fn *ast.FuncDecl) (map[types.Object]strin
 			return
 		}
 		counts[o]++
+		defs[o] = at
 		if containsCall(pass, rhs[0]) {
 			inits[o] = testapi.Render(pass.Fset, rhs[0])
 		}
@@ -166,13 +175,13 @@ func collectInits(pass *analysis.Pass, fn *ast.FuncDecl) (map[types.Object]strin
 	ast.Inspect(fn.Body, func(n ast.Node) bool {
 		switch s := n.(type) {
 		case *ast.AssignStmt:
-			note(s.Lhs, s.Rhs)
+			note(s, s.Lhs, s.Rhs)
 		case *ast.ValueSpec:
 			lhs := make([]ast.Expr, 0, len(s.Names))
 			for _, id := range s.Names {
 				lhs = append(lhs, id)
 			}
-			note(lhs, s.Values)
+			note(s, lhs, s.Values)
 		case *ast.IncDecStmt:
 			if o := obj(s.X); o != nil {
 				counts[o] += 2
@@ -185,7 +194,83 @@ func collectInits(pass *analysis.Pass, fn *ast.FuncDecl) (map[types.Object]strin
 		}
 		return true
 	})
-	return inits, counts
+	return inits, counts, defs
+}
+
+// parentsOf maps each node under root to its parent.
+func parentsOf(root ast.Node) map[ast.Node]ast.Node {
+	parents := map[ast.Node]ast.Node{}
+	var stack []ast.Node
+	ast.Inspect(root, func(n ast.Node) bool {
+		if n == nil {
+			stack = stack[:len(stack)-1]
+			return false
+		}
+		if len(stack) > 0 {
+			parents[n] = stack[len(stack)-1]
+		}
+		stack = append(stack, n)
+		return true
+	})
+	return parents
+}
+
+// listed returns the statement holding n that sits directly in a statement
+// list, the node owning that list, and the list.
+func listed(parents map[ast.Node]ast.Node, n ast.Node) (ast.Stmt, ast.Node, []ast.Stmt) {
+	for p := parents[n]; p != nil; n, p = p, parents[p] {
+		var list []ast.Stmt
+		switch p := p.(type) {
+		case *ast.BlockStmt:
+			list = p.List
+		case *ast.CaseClause:
+			list = p.Body
+		case *ast.CommClause:
+			list = p.Body
+		default:
+			continue
+		}
+		if s, ok := n.(ast.Stmt); ok {
+			return s, p, list
+		}
+	}
+	return nil, nil, nil
+}
+
+// quietBetween reports whether the definitions du and dv of u and v share a
+// statement list, the comparison cmp comes after both in it, and no
+// statement between, nor any before cmp in a list nested between, could
+// change u or v by sideeffect.Harmless.
+func quietBetween(pass *analysis.Pass, parents map[ast.Node]ast.Node, du, dv, cmp ast.Node, u, v types.Object) bool {
+	guarded := func(o types.Object) bool { return o == u || o == v }
+	su, owner, list := listed(parents, du)
+	sv, ownerV, _ := listed(parents, dv)
+	if owner == nil || owner != ownerV {
+		return false
+	}
+	iu, iv := slices.Index(list, su), slices.Index(list, sv)
+	for n := cmp; ; {
+		s, o, l := listed(parents, n)
+		if o == nil {
+			return false
+		}
+		between := l[:slices.Index(l, s)]
+		if o == owner {
+			if len(between) <= max(iu, iv) {
+				return false
+			}
+			between = slices.Concat(l[min(iu, iv)+1:max(iu, iv)], l[max(iu, iv)+1:len(between)])
+		}
+		for _, b := range between {
+			if !sideeffect.Harmless(pass.TypesInfo, b, guarded) {
+				return false
+			}
+		}
+		if o == owner {
+			return true
+		}
+		n = o
+	}
 }
 
 // objectsIn lists the local variables named anywhere in e, excluding the
