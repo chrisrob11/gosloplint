@@ -51,6 +51,16 @@ func Restore() {}
 // Note: a nil map is empty.
 func Read() {}
 
+// reply is how the fix role answers a comment: "#3: renamed it".
+func reply() {}
+
+// Format reads a line such as `#12: moved it to the cache`, or “the code was
+// changed to use a pool”, as one reply.
+func Format() {}
+
+// Pair joins "a" and "b was renamed from c" into one reply.
+func Pair() {}
+
 var s = "this now uses the cache, previously, per review" // a string literal is not a comment
 
 var _ = s

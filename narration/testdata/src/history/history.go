@@ -79,3 +79,9 @@ func Wrap() {}
 
 // Pick returns the first match, kept from review feedback. // want `"review feedback"`
 func Pick() {}
+
+// Parse reads "a, b" pairs; this function now uses a scanner. // want `"this function now"`
+func Parse() {}
+
+// Halve takes a "dangling quote and was renamed from Cut. // want `renamed from`
+func Halve() {}

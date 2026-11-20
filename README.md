@@ -798,7 +798,10 @@ Only comments are read, never string literals. Go directive lines
 (`//go:build`, `//nolint:x`, `//gosloplint:ignore`) are not prose, and a
 comment above the package clause that is not its doc (a license header, a
 build constraint's note), or any block naming a copyright or an SPDX license,
-is skipped. Generated files are skipped. Test files are read like any other:
+is skipped. Generated files are skipped. `history` skips text inside a closed
+`"…"`, `` `…` `` or `“…”` pair, so a quoted example such as a reply format
+(`"#3: renamed it"`) is not narration; an unclosed quote hides nothing.
+Test files are read like any other:
 a test's "the bug where" or "regression for #123" says what it guards, and
 needs a change verb before it is narration.
 
