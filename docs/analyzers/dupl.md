@@ -32,7 +32,8 @@ func (t Totals) Monthly(weeks []int) int { return t.clampedMean(weeks) }
 A clone is reported once per pair of functions, at the later occurrence (by
 file name, then line), naming the lines of the earlier one: `lines 31-48
 duplicate lines 8-25 of totals.go (Totals.Weekly)`. Each side's lines cover
-every run the pair shares.
+every run the pair shares, except that the two sides never overlap: within
+one function, a run that would widen one side into the other is left out.
 
 How code is compared: each statement is reduced to the sequence of its
 syntax node kinds, keeping every operator, assignment and branch token, and
@@ -45,8 +46,14 @@ the minimum; two runs match when their statement shapes are equal in order.
 Not reported: a composite literal, compared as one node whatever it holds,
 since two tables of one shape are data, not a decision made twice; a
 switch's or select's list of clauses, a dispatch table (each clause body is
-still compared on its own); a statement repeated in place, two overlapping
-runs of one block; generated files; `_test.go` files unless `tests` is set,
+still compared on its own); a run of flag registrations, routes or setters
+that only shares its shape: a run whose every statement is a bare call, its
+arguments each a name, a literal, a field or its address, or a composite or
+function literal, or such a call guarded by `if err := f(x); err != nil {
+return err }`, is a copy only when it is also spelled alike, the same
+literal values and called names (and, with no literal in a statement, the
+same names), since any two such runs of one length match on node kinds; a
+statement repeated in place, two overlapping runs of one block; generated files; `_test.go` files unless `tests` is set,
 since test tables and setup repeat by design. A finding is suppressed with
 [`//gosloplint:ignore dupl <reason>`](../ignore.md)
 at the later copy. The alias `dupl-ok` leaves a function out of the comparison
