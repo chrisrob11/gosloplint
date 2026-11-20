@@ -31,6 +31,25 @@ func newFile(f *ast.File, name string, lines int) *file {
 	}
 }
 
+// platform reports whether the file builds only on some platforms: its name
+// ends in a part of platforms, or it has a //go:build line.
+func (f *file) platform() bool {
+	if dropPlatform(f.base) != f.base {
+		return true
+	}
+	for _, g := range f.ast.Comments {
+		if g.Pos() >= f.ast.Package {
+			break
+		}
+		for _, c := range g.List {
+			if strings.HasPrefix(c.Text, "//go:build ") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // exempt reports whether no rule reads the file: it is generated, or it is
 // doc.go.
 func (f *file) exempt() bool { return f.generated || f.base == "doc" }
