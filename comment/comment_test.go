@@ -25,7 +25,7 @@ func TestBlocksWithinTheirLimitsAndGeneratedFilesAreClean(t *testing.T) {
 			t.Errorf("%s: %q, want none", pkg, got)
 		}
 	}
-	for _, pkg := range []string{"gen", "sparse", "tiny", "trailing", "withtests"} {
+	for _, pkg := range []string{"gen", "licensed", "sparse", "tiny", "trailing", "withtests"} {
 		if got := diagnostics(t, comment.Analyzer, pkg); len(got) != 0 {
 			t.Errorf("%s: %q, want none", pkg, got)
 		}

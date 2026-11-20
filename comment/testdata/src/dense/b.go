@@ -1,3 +1,6 @@
+// Copyright 2026 The Example Authors.
+// SPDX-License-Identifier: MIT
+
 package dense
 
 // B0 does a thing.

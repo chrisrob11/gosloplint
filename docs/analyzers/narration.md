@@ -20,7 +20,7 @@ Checks:
   | `now` + uses, delegates, lives, relies on, goes through | Get now uses the cache | |
   | `we` + replaced, refactored, rewrote, reworked, renamed, switched from/to/over, used to, changed this/it/the noun to | we replaced the mutex | we change the key to lower case |
   | `previously` opening a sentence, then a comma or a subject | Previously, it panicked | the previously stored value |
-  | after, before, since, during, in, with + the/this/... + refactor, rewrite, rework, cleanup, ending the clause | simpler after the refactor | after the rewrite rules run; after the cleanup goroutine exits |
+  | after, before, since, during, in, with + the/this/that/my/our + refactor, rewrite, rework, cleanup, ending the clause | simpler after the refactor | after the rewrite rules run; after the cleanup goroutine exits; if it fails after a refactor (no particular change) |
   | per/addressing review, requested/suggested in review, review feedback | per review | the documents waiting for review |
   | fix(es/ed) the/a bug/issue/regression where/that/when/with | this fixes the bug where | the test for the bug where |
   | renamed from, moved here from, formerly called/named/known as | Join was renamed from Concat | rows moved from the source table |
@@ -30,16 +30,26 @@ Checks:
 
   The code nouns are function, func, method, type, struct, package, code,
   test, helper, check, logic, implementation, analyzer, handler and wrapper.
-  One finding per block, at the line its earliest phrase starts on.
+  One finding per block, at the line its earliest phrase starts on. A
+  paragraph from a line opening with `Deprecated:` to the next blank line is
+  godoc's deprecation notice, which says what changed by design ("Deprecated:
+  this no longer has any effect"), so it is not read; the rest of the block is.
 
 - `warnsign`: a second warning marker in one declaration. A marker is ⚠
   anywhere on a line, or `WARNING:`, `IMPORTANT:`, `NOTE:`, `CAUTION:`,
   `NB:` (or `Warning:`, `Important:`, `Note:`, `Caution:`, bold or not)
   opening one. One marker can say "a reader must not miss this"; a marker on
-  every comment marks none. So a declaration, its doc, body and fields
-  together, may hold one, and every marker after the first is reported; a
-  comment block outside every declaration is its own unit. A single marker is
-  never reported: `Note:` is ordinary Go documentation.
+  every comment marks none. So each unit may hold one, and every marker after
+  the first is reported. A unit is the innermost of: a top-level declaration,
+  its doc and body together; one spec of a grouped `type ( ... )`,
+  `const ( ... )` or `var ( ... )`, with its doc and line comment (a comment
+  between specs belongs to the group); one field of a struct type or one
+  method of an interface type, with its doc and line comment, named
+  `Type.Field`. Each documents a separate thing a reader looks up on its own,
+  so a marker on each is not overuse. A function body is one unit with its
+  doc, struct literals and test tables included. A comment block outside
+  every declaration is its own unit. A single marker is never reported:
+  `Note:` is ordinary Go documentation.
 
 ```go
 // Bad: the comment is a changelog.

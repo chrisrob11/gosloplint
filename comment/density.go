@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
+
+	"github.com/chrisrob11/gosloplint/internal/header"
 )
 
 // fileLines is one file's count of comment lines and code lines.
@@ -72,7 +74,8 @@ func percent(part, whole int) string {
 // measure counts f's comment lines and code lines. A comment on its own line
 // is a comment line, and so is each further line of a /* */ block; a line
 // with code before its comment is code. Directive lines are neither, and
-// blank lines are in no count.
+// blank lines and the lines of a header (a license or copyright notice,
+// see header.Is) are in no count.
 func measure(fset *token.FileSet, f *ast.File, src []byte) fileLines {
 	lines := strings.Split(string(src), "\n")
 	text := func(n int) string {
@@ -81,8 +84,14 @@ func measure(fset *token.FileSet, f *ast.File, src []byte) fileLines {
 		}
 		return lines[n-1]
 	}
-	commentLine, directiveLine := map[int]bool{}, map[int]bool{}
+	commentLine, directiveLine, headerLine := map[int]bool{}, map[int]bool{}, map[int]bool{}
 	for _, cg := range f.Comments {
+		if header.Is(f, cg) {
+			for n := fset.Position(cg.Pos()).Line; n <= fset.Position(cg.End()).Line; n++ {
+				headerLine[n] = true
+			}
+			continue
+		}
 		for _, c := range cg.List {
 			start := fset.Position(c.Pos())
 			end := fset.Position(c.End()).Line
@@ -104,7 +113,7 @@ func measure(fset *token.FileSet, f *ast.File, src []byte) fileLines {
 		switch {
 		case commentLine[n]:
 			out.comment++
-		case directiveLine[n], strings.TrimSpace(text(n)) == "":
+		case directiveLine[n], headerLine[n], strings.TrimSpace(text(n)) == "":
 		default:
 			out.code++
 		}

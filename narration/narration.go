@@ -8,11 +8,13 @@
 //     refactor", "per review", "fixes the bug where", "renamed from",
 //     "added in #123". The phrases are anchored as narration, a subject
 //     the code is or a change verb, so "the previously stored value" or
-//     "is no longer held" is not one. One finding per comment block.
+//     "is no longer held" is not one. A Deprecated: paragraph is not read.
+//     One finding per comment block.
 //   - warnsign: a second warning marker (⚠, WARNING:, IMPORTANT:, NOTE:,
-//     CAUTION:, NB:) in one declaration, its doc and body together. One
-//     marker can say "a reader must not miss this"; a marker on every
-//     comment says nothing, so every marker after a declaration's first
+//     CAUTION:, NB:) in one unit: a declaration with its doc and body, or
+//     one spec of a grouped declaration, or one struct field or interface
+//     method. One marker can say "a reader must not miss this"; a marker
+//     on every comment says nothing, so every marker after a unit's first
 //     is reported.
 //
 // Only comments are read, never string literals. Go directive lines
@@ -32,6 +34,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/chrisrob11/gosloplint/internal/header"
 	"github.com/chrisrob11/gosloplint/internal/listflag"
 )
 
@@ -87,7 +90,7 @@ type line struct {
 // prose returns the lines of cg a reader reads as prose, without comment
 // markers and Go directive lines; nil for a header block.
 func prose(f *ast.File, cg *ast.CommentGroup) []line {
-	if cg != f.Doc && cg.End() < f.Package {
+	if header.Is(f, cg) {
 		return nil
 	}
 	var out []line
@@ -102,12 +105,6 @@ func prose(f *ast.File, cg *ast.CommentGroup) []line {
 		body := strings.TrimSuffix(strings.TrimPrefix(c.Text, "/*"), "*/")
 		for _, l := range strings.Split(body, "\n") {
 			out = append(out, line{c.Pos(), l})
-		}
-	}
-	for _, l := range out {
-		low := strings.ToLower(l.text)
-		if strings.Contains(low, "copyright") || strings.Contains(low, "spdx-license-identifier") {
-			return nil
 		}
 	}
 	return out
@@ -149,7 +146,7 @@ func historyPhrases() []*regexp.Regexp {
 		`\bnow (?:uses|delegates|lives|relies on|goes through)\b`,
 		`\bwe (?:replaced|refactored|rewrote|reworked|renamed|switched (?:from|to|over)|used to|changed (?:this|it|the ` + noun + `) to)\b`,
 		`(?:^|[.!?;:] )(previously(?:,| (?:this|it|we|the|these|they|that)\b))`,
-		`(\b(?:after|before|since|during|in|with) (?:the|this|that|a|my|our) ` + rework + `)` + after,
+		`(\b(?:after|before|since|during|in|with) (?:the|this|that|my|our) ` + rework + `)` + after,
 		`\b(?:per|addressing|addresses|addressed) (?:the |a )?(?:code |pr )?review\b`,
 		`\b(?:requested|suggested|asked for) (?:in|during|by) (?:the |a )?(?:code |pr )?review\b`,
 		`\breview feedback\b`,
