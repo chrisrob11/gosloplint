@@ -30,7 +30,7 @@ func TestRegisteredUnderItsName(t *testing.T) {
 }
 
 func TestNoSettingsEnablesEveryAnalyzer(t *testing.T) {
-	want := []string{"cannotfail", "comment", "ctxthread", "dupl", "emptyid", "emptyskip", "fileplace", "selfassert", "steer", "testhelper", "vocab"}
+	want := []string{"cannotfail", "comment", "ctxthread", "dupl", "emptyid", "emptyskip", "fileplace", "narration", "selfassert", "steer", "testhelper", "vocab"}
 	if got := names(t, build(t, nil)); !slices.Equal(got, want) {
 		t.Errorf("analyzers = %v, want %v", got, want)
 	}
@@ -38,7 +38,7 @@ func TestNoSettingsEnablesEveryAnalyzer(t *testing.T) {
 
 func TestDisable(t *testing.T) {
 	as := build(t, map[string]any{"disable": []any{"ctxthread", "vocab"}})
-	want := []string{"cannotfail", "comment", "dupl", "emptyid", "emptyskip", "fileplace", "selfassert", "steer", "testhelper"}
+	want := []string{"cannotfail", "comment", "dupl", "emptyid", "emptyskip", "fileplace", "narration", "selfassert", "steer", "testhelper"}
 	if got := names(t, as); !slices.Equal(got, want) {
 		t.Errorf("analyzers = %v, want %v", got, want)
 	}
@@ -83,6 +83,8 @@ func TestBadSettingsAreErrors(t *testing.T) {
 		{"unknown cannotfail field", map[string]any{"cannotfail": map[string]any{"assert_funcs": []any{"x"}}}, `unknown field "assert_funcs"`},
 		{"cannotfail for disabled cannotfail", map[string]any{"disable": []any{"cannotfail"}, "cannotfail": map[string]any{"enable": []any{"empty-loop"}}}, "cannotfail settings are set but cannotfail is disabled"},
 		{"fileplace for disabled fileplace", map[string]any{"disable": []any{"fileplace"}, "fileplace": map[string]any{"long-lines": 900}}, "fileplace settings are set but fileplace is disabled"},
+		{"unknown narration check", map[string]any{"narration": map[string]any{"disable": []any{"histories"}}}, `narration.disable[0]: unknown check "histories"`},
+		{"narration for disabled narration", map[string]any{"disable": []any{"narration"}, "narration": map[string]any{"disable": []any{"history"}}}, "narration settings are set but narration is disabled"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := plugin.New(tc.settings)
@@ -127,6 +129,16 @@ func TestCommentLimitsReachTheAnalyzer(t *testing.T) {
 	}
 	if got := findings(t, map[string]any{"comment": map[string]any{"disable": []any{"length"}}}, "comment"); len(got) != 0 {
 		t.Errorf("length disabled: findings = %q, want none", got)
+	}
+}
+
+func TestNarrationDisableReachesTheAnalyzer(t *testing.T) {
+	got := findings(t, nil, "narration")
+	if len(got) != 1 || !strings.HasPrefix(got[0], `history: "now uses" narrates`) {
+		t.Errorf("default: findings = %q, want cached's doc", got)
+	}
+	if got := findings(t, map[string]any{"narration": map[string]any{"disable": []any{"history"}}}, "narration"); len(got) != 0 {
+		t.Errorf("history disabled: findings = %q, want none", got)
 	}
 }
 

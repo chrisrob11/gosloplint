@@ -83,3 +83,7 @@ func second(ys []int) (int, int) {
 	}
 	return a, width
 }
+
+// cached is reported by narration unless history is disabled: it now uses a
+// map.
+func cached() {}

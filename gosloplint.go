@@ -14,6 +14,7 @@ import (
 	"github.com/chrisrob11/gosloplint/emptyid"
 	"github.com/chrisrob11/gosloplint/emptyskip"
 	"github.com/chrisrob11/gosloplint/fileplace"
+	"github.com/chrisrob11/gosloplint/narration"
 	"github.com/chrisrob11/gosloplint/selfassert"
 	"github.com/chrisrob11/gosloplint/steer"
 	"github.com/chrisrob11/gosloplint/testhelper"
@@ -30,6 +31,7 @@ func Analyzers() []*analysis.Analyzer {
 		emptyid.Analyzer,
 		emptyskip.Analyzer,
 		fileplace.Analyzer,
+		narration.Analyzer,
 		selfassert.Analyzer,
 		steer.Analyzer,
 		testhelper.Analyzer,
@@ -48,6 +50,7 @@ func Checks() map[string][]string {
 	out[cannotfail.Analyzer.Name] = slices.Clone(cannotfail.Checks)
 	out[comment.Analyzer.Name] = slices.Clone(comment.Checks)
 	out[fileplace.Analyzer.Name] = slices.Clone(fileplace.Rules)
+	out[narration.Analyzer.Name] = slices.Clone(narration.Checks)
 	out[steer.Analyzer.Name] = slices.Clone(steer.Checks)
 	return out
 }
