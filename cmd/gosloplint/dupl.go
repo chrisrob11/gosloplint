@@ -8,8 +8,11 @@ import (
 	"slices"
 	"strings"
 
+	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 
+	"github.com/chrisrob11/gosloplint/dupl"
+	"github.com/chrisrob11/gosloplint/internal/baseline"
 	"github.com/chrisrob11/gosloplint/internal/clone"
 	"github.com/chrisrob11/gosloplint/internal/ignore"
 )
@@ -17,8 +20,10 @@ import (
 const duplUsage = `usage: gosloplint dupl [flags] [packages]
 
 Reports copied statement runs across all the packages named (default ./...),
-the copies the per-package dupl analyzer cannot see. It exits 1 on findings,
-0 when clean and 2 on an error. Flags:
+the copies the per-package dupl analyzer cannot see. With -baseline, a
+package's copies are held to its dupl:cross count, and those within it to
+its dupl count. It exits 1 on findings, 0 when clean and 2 on an error.
+Flags:
 `
 
 // runDupl is `gosloplint dupl`: the dupl analyzer's detector over every
@@ -27,53 +32,97 @@ func runDupl(args []string, stdout, stderr io.Writer) int {
 	fs, fail := subcommand("dupl", duplUsage, stderr)
 	var cfg clone.Config
 	clone.BindFlags(fs, &cfg)
+	file := fs.String("baseline", "", "a file written by gosloplint baseline: report a package's copies only once they outnumber its count")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if err := cfg.Validate(); err != nil {
 		return fail(err)
 	}
+	var counts baseline.Counts
+	if *file != "" {
+		var err error
+		if counts, err = baseline.Read(*file); err != nil {
+			return fail(err)
+		}
+	}
 	pkgs, err := load(packages.NeedName|packages.NeedFiles|packages.NeedSyntax, cfg.Tests, fs.Args())
 	if err != nil {
 		return fail(err)
 	}
-	d := clone.NewDetector(pkgs[0].Fset, cfg)
-	seen := map[string]bool{}
-	for _, p := range pkgs {
-		for _, f := range p.Syntax {
-			name := p.Fset.File(f.Pos()).Name()
-			if !seen[name] && cfg.Includes(p.PkgPath, name) {
-				seen[name] = true
-				d.Add(f)
-			}
-		}
+	found := duplicates(pkgs, cfg)
+	notes, shown := make([]string, len(found)), make([]bool, len(found))
+	byPkg := map[string][]int{}
+	for i, c := range found {
+		byPkg[c.pkg] = append(byPkg[c.pkg], i)
 	}
-	var dirs []*ignore.Directive
-	for _, p := range pkgs {
-		for _, f := range p.Syntax {
-			dirs = append(dirs, ignore.Parse(p.Fset, f)...)
+	for pkg, idx := range byPkg {
+		keys := make([]string, len(idx))
+		for j, i := range idx {
+			keys[j] = found[i].key
 		}
-	}
-	var clones []clone.Clone
-	for _, c := range d.Clones() {
-		if !slices.ContainsFunc(dirs, func(dir *ignore.Directive) bool {
-			return dir.Analyzer == "dupl" && dir.Covers(pkgs[0].Fset, "", c.B.Pos)
-		}) {
-			clones = append(clones, c)
-		}
+		baseline.Filter(counts[pkg], keys, func(j int, note string) { shown[idx[j]], notes[idx[j]] = true, note })
 	}
 	var b strings.Builder
-	for _, c := range clones {
+	reported := 0
+	for i, c := range found {
+		if !shown[i] {
+			continue
+		}
+		reported++
 		pos := pkgs[0].Fset.Position(c.B.Pos)
-		fmt.Fprintf(&b, "%s:%d:%d: %s\n", rel(pos.Filename), pos.Line, pos.Column, c.Message(rel(c.A.File)))
+		fmt.Fprintf(&b, "%s:%d:%d: %s%s\n", rel(pos.Filename), pos.Line, pos.Column, c.Message(rel(c.A.File)), notes[i])
 	}
 	if _, err := io.WriteString(stdout, b.String()); err != nil {
 		return fail(err)
 	}
-	if len(clones) > 0 {
+	if reported > 0 {
 		return 1
 	}
 	return 0
+}
+
+// duplicate is a copy `gosloplint dupl` finds: pkg is the import path of
+// the package holding the later copy, where it is reported and counted,
+// and key its baseline Key: dupl:cross when the earlier copy is in another
+// package, else dupl, the count the dupl analyzer records for it.
+type duplicate struct {
+	clone.Clone
+	pkg, key string
+}
+
+// duplicates is every copy in pkgs under cfg, in the detector's order, but
+// those a //gosloplint:ignore dupl directive (dupl:cross for a copy across
+// packages) suppresses at the later copy.
+func duplicates(pkgs []*packages.Package, cfg clone.Config) []duplicate {
+	fset := pkgs[0].Fset
+	d := clone.NewDetector(fset, cfg)
+	pkgOf := map[string]string{}
+	var dirs []*ignore.Directive
+	for _, p := range pkgs {
+		for _, f := range p.Syntax {
+			name := fset.File(f.Pos()).Name()
+			if _, seen := pkgOf[name]; seen || !cfg.Includes(p.PkgPath, name) {
+				continue
+			}
+			pkgOf[name] = p.PkgPath
+			d.Add(f)
+			dirs = append(dirs, ignore.Parse(fset, f)...)
+		}
+	}
+	var out []duplicate
+	for _, c := range d.Clones() {
+		check := ""
+		if pkgOf[c.A.File] != pkgOf[c.B.File] {
+			check = dupl.Cross
+		}
+		if !slices.ContainsFunc(dirs, func(dir *ignore.Directive) bool {
+			return dir.Analyzer == dupl.Analyzer.Name && dir.Covers(fset, check, c.B.Pos)
+		}) {
+			out = append(out, duplicate{c, pkgOf[c.B.File], baseline.Key(dupl.Analyzer.Name, analysis.Diagnostic{Category: check})})
+		}
+	}
+	return out
 }
 
 // load loads patterns (default ./...) with mode, and their tests if tests is

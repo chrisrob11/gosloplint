@@ -217,7 +217,7 @@ func build(s Settings) ([]*analysis.Analyzer, error) {
 		}
 		out = append(out, a)
 	}
-	out = ignore.Wrap(out, gosloplint.Checks())
+	out = ignore.Wrap(out, gosloplint.Checks(), gosloplint.Elsewhere())
 	if s.Baseline == "" {
 		return out, nil
 	}

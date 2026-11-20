@@ -112,8 +112,10 @@ func (d *Directive) Covers(fset *token.FileSet, check string, pos token.Pos) boo
 // or not, to its checks, the categories of its findings. Each copy also
 // reports the directives naming its analyzer that have no reason or an
 // unknown check, or that suppress nothing when its Run succeeds; the first
-// copy reports those naming no known analyzer.
-func Wrap(analyzers []*analysis.Analyzer, known map[string][]string) []*analysis.Analyzer {
+// copy reports those naming no known analyzer. elsewhere maps an analyzer
+// to those of its checks that no pass reports, so a directive naming one
+// is never stale here.
+func Wrap(analyzers []*analysis.Analyzer, known, elsewhere map[string][]string) []*analysis.Analyzer {
 	out := make([]*analysis.Analyzer, len(analyzers))
 	for i, a := range analyzers {
 		w := *a
@@ -145,7 +147,7 @@ func Wrap(analyzers []*analysis.Analyzer, known map[string][]string) []*analysis
 				used[mine[i]] = true
 			}
 			for _, d := range mine {
-				if !used[d] && err == nil {
+				if !used[d] && err == nil && !slices.Contains(elsewhere[a.Name], d.Check) {
 					pass.Report(analysis.Diagnostic{Pos: d.Pos, Category: Category,
 						Message: fmt.Sprintf("%s: %s %s suppresses no %s finding: delete it", Category, Prefix, d.target(), a.Name)})
 				}

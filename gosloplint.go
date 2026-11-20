@@ -49,8 +49,15 @@ func Checks() map[string][]string {
 	}
 	out[cannotfail.Analyzer.Name] = slices.Clone(cannotfail.Checks)
 	out[comment.Analyzer.Name] = slices.Clone(comment.Checks)
+	out[dupl.Analyzer.Name] = []string{dupl.Cross}
 	out[fileplace.Analyzer.Name] = slices.Clone(fileplace.Rules)
 	out[narration.Analyzer.Name] = slices.Clone(narration.Checks)
 	out[steer.Analyzer.Name] = slices.Clone(steer.Checks)
 	return out
+}
+
+// Elsewhere maps an analyzer's name to those of its Checks that no
+// analysis pass reports: dupl's cross, reported by `gosloplint dupl`.
+func Elsewhere() map[string][]string {
+	return map[string][]string{dupl.Analyzer.Name: {dupl.Cross}}
 }

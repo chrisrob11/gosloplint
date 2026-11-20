@@ -119,19 +119,35 @@ func (f *filter) get() (Counts, error) {
 // report reports the findings held from one pass of analyzer whose Key
 // outnumbers its count in recorded.
 func report(pass *analysis.Pass, analyzer string, recorded map[string]int, held []analysis.Diagnostic) {
-	byKey := map[string]int{}
-	for _, d := range held {
-		byKey[Key(analyzer, d)]++
+	keys := make([]string, len(held))
+	for i, d := range held {
+		keys[i] = Key(analyzer, d)
 	}
-	for _, d := range held {
-		k := Key(analyzer, d)
+	Filter(recorded, keys, func(i int, note string) {
+		d := held[i]
+		d.Message += note
+		pass.Report(d)
+	})
+}
+
+// Filter calls emit, in order, for each of one package's findings that its
+// counts in recorded let through: keys[i] is finding i's Key. The findings
+// of a Key pass once they outnumber its count, all of them, and note ends
+// the message with both numbers when the count is not 0.
+func Filter(recorded map[string]int, keys []string, emit func(i int, note string)) {
+	byKey := map[string]int{}
+	for _, k := range keys {
+		byKey[k]++
+	}
+	for i, k := range keys {
 		n, base := byKey[k], recorded[k]
 		if n <= base {
 			continue
 		}
+		note := ""
 		if base > 0 {
-			d.Message += fmt.Sprintf(" (%d %s findings in this package, over its baseline of %d)", n, k, base)
+			note = fmt.Sprintf(" (%d %s findings in this package, over its baseline of %d)", n, k, base)
 		}
-		pass.Report(d)
+		emit(i, note)
 	}
 }

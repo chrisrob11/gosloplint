@@ -59,7 +59,7 @@ func TestBaselineTakesTheAnalyzerFlags(t *testing.T) {
 	if r := run(t, bin, "baseline", "-dupl.min-nodes", "1000", "./..."); r.code != 0 {
 		t.Fatalf("baseline -dupl.min-nodes 1000 = %d: %s", r.code, r.out)
 	}
-	if strings.Contains(read(t, baseline.DefaultFile), `"dupl"`) {
+	if strings.Contains(read(t, baseline.DefaultFile), `"dupl`) {
 		t.Errorf("-dupl.min-nodes 1000: %s records dupl", read(t, baseline.DefaultFile))
 	}
 	for _, args := range [][]string{{"baseline", "-nope"}, {"baseline", "./missing"}, {"baseline", "-o", "no/such/dir/b.json", "./..."}} {
@@ -87,4 +87,42 @@ func read(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+// TestBaselineRecordsCopiesAcrossPackages: the copies across packages are
+// counted as dupl:cross, a copy within one package only as dupl, so dupl
+// -baseline is clean on the file the baseline wrote.
+func TestBaselineRecordsCopiesAcrossPackages(t *testing.T) {
+	bin := build(t)
+	module(t)
+	third(t)
+	if r := run(t, bin, "baseline", "-o", "bl.json", "./..."); r.code != 0 {
+		t.Fatalf("baseline = %d: %s", r.code, r.out)
+	}
+	counts, err := baseline.Read("bl.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := counts["example.com/m/b"]; b["dupl:cross"] != 2 || b["dupl"] != 1 {
+		t.Errorf("b's counts = %v, want dupl:cross 2 and dupl 1", b)
+	}
+	if c := counts["example.com/m/c"]; c["dupl:cross"] != 0 {
+		t.Errorf("c's counts = %v, want no dupl:cross without -dupl.tests", c)
+	}
+	if r := run(t, bin, "dupl", "-baseline", "bl.json", "./..."); r.code != 0 || r.out != "" {
+		t.Errorf("dupl -baseline = %d, %q, want 0 and nothing", r.code, r.out)
+	}
+
+	if r := run(t, bin, "baseline", "-o", "tests.json", "-dupl.tests", "./..."); r.code != 0 {
+		t.Fatalf("baseline -dupl.tests = %d: %s", r.code, r.out)
+	}
+	if counts, err = baseline.Read("tests.json"); err != nil {
+		t.Fatal(err)
+	}
+	if c := counts["example.com/m/c"]; c["dupl:cross"] != 3 {
+		t.Errorf("-dupl.tests: c's counts = %v, want dupl:cross 3, c_test.go's copies", c)
+	}
+	if r := run(t, bin, "dupl", "-tests", "-baseline", "tests.json", "./..."); r.code != 0 || r.out != "" {
+		t.Errorf("dupl -tests -baseline = %d, %q, want 0 and nothing", r.code, r.out)
+	}
 }
