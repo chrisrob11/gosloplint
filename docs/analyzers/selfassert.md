@@ -14,7 +14,14 @@ Three shapes:
   NaN test);
 - two locals given the same initialiser, each assigned once, then compared,
   directly or inside larger expressions that differ only in which of the two
-  they name.
+  they name, when nothing between could change either: the two definitions
+  share a block, and every statement between them and the comparison (and
+  before it in any block nested between) has no call but to a builtin or a
+  conversion, no receive, no address taken and no assignment to either, and
+  is not a compound statement. A call between makes the pair a before/after
+  snapshot (`before := checksum(f); rewrite(f); after := checksum(f)`), which
+  is a real assertion; so is a pair defined in different blocks, as one
+  taken outside a subtest and one inside it.
 
 ```go
 // Bad: both sides are one expression.

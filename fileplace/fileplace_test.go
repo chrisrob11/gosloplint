@@ -13,7 +13,7 @@ import (
 )
 
 func TestDefaultRules(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), fileplace.Analyzer, "receiver", "testname", "cmdmain", "grabbag", "tiny")
+	analysistest.Run(t, analysistest.TestData(), fileplace.Analyzer, "receiver", "testname", "cmdmain", "grabbag", "tiny", "domainword")
 }
 
 func TestOffByDefaultRules(t *testing.T) {
@@ -30,7 +30,7 @@ func TestOffByDefaultRules(t *testing.T) {
 
 func TestCleanPackages(t *testing.T) {
 	a := fileplace.New(fileplace.Settings{Enable: fileplace.OffByDefault})
-	for _, pkg := range []string{"tinypass", "single", "helpers"} {
+	for _, pkg := range []string{"tinypass", "single", "helpers", "testonly"} {
 		if got := diagnostics(t, a, pkg); len(got) != 0 {
 			t.Errorf("%s: %q, want none", pkg, got)
 		}

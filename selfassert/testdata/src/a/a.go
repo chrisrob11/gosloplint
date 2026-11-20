@@ -14,6 +14,8 @@ func fillA(map[string]int)         {}
 func fillB(map[string]int)         {}
 func fill(*string)                 {}
 func newID() string                { return "" }
+func checksum(string) string       { return "" }
+func rewrite(string)               {}
 
 // Not reported: a self-comparison outside a test file is a different defect.
 func same(x int) bool { return x == x }

@@ -33,7 +33,7 @@ Good: parse.go holding Parse, parse_test.go, parse_internal_test.go, doc.go
 ```
 
 A file is named for a declaration when its name, lower-cased with its
-underscores and any GOOS/GOARCH suffix dropped, spells the declaration's
+underscores and any GOOS/GOARCH suffix (or `_unix`, `_other`) dropped, spells the declaration's
 name or a run of its camelCase words, abbreviated or plural: `volatility.go`
 holds `VolatilityOf`, `refs.go` `ReferencedColumns`, `txn.go`
 `Transaction`. A file named for its package or directory is named for what
@@ -44,7 +44,9 @@ a method in a file named for a concern rather than a type, a method of a
 type whose files pass `long-lines` in `<type>_<concern>.go`, and methods
 `export_test.go` adds, which is what it is for. `testname`: `foo_test.go`
 and `foo_<suffix>_test.go` for a source `foo.go`, with the suffixes
-`internal`, `integration`, `external`, `bench`, `fuzz` and `example`; a
+`internal`, `integration`, `external`, `bench`, `fuzz` and `example`;
+`foo_<aspect>_test.go` for a source `foo.go` other than the one named for
+the package (`root_special_unix_test.go` beside `root.go`); a
 stem naming a declaration of the package (`newer_test.go` testing `Newer`);
 the package's general test file, `<pkg>_test.go`, or one named for the
 directory, alone or with one of those suffixes; `<pkg>_<x>_test.go` only
@@ -53,12 +55,18 @@ package, and in package `main` also a subcommand: a string `case` of a
 switch on an argument (`os.Args[1]`, `args[0]`, `fs.Arg(0)`), or the first
 word of the `Name` or `Use` of a composite literal of a type named
 `Command` (urfave/cli, cobra); `example_test.go`, `example_*_test.go`,
-`export_test.go` and `main_test.go`. So `main_ask_test.go` passes in a
+`export_test.go` and `main_test.go`; and every test file of a directory
+with no non-test `.go` file, an integration suite named for what it
+exercises. So `main_ask_test.go` passes in a
 command with an `ask` subcommand or an `askCmd` function, and
-`gadget_extra_test.go` names nothing. `grabbag`: a part
-that names a type of the package (`types.go` holding `Types`), and the
-package's own name (`helpers.go` in package `helpers`). `tiny`: a package's
-only file.
+`gadget_extra_test.go` names nothing. `grabbag`: a
+part that names a type of the package (`types.go` holding `Types`), the
+package's own name (`helpers.go` in package `helpers`), and a stem of two or
+more parts that spells a declaration of the package under test, the word
+then being a domain term (`helper_config.go` and `helper_config_test.go`
+for `HelperConfig`, `base_repo.go` for `BaseRepoFunc`). `tiny`: a package's
+only file, and a file built for some platforms only: one with a
+`//go:build` line or a GOOS/GOARCH, `_unix` or `_other` name suffix.
 
 Scope: each rule reads one package pass. `testname` reads the names of the
 non-test `.go` files in the package's directory from the directory itself,

@@ -21,6 +21,11 @@ Checks:
   call handed a testing value (or a struct holding one) outside the
   package, a call through a function value, and a testing value stored,
   returned or sent, so a fake holding `t` is never mistaken for silence.
+  A call of a function or method named `Must` or `must` followed by an
+  upper-case letter (`MustSave`, `regexp.MustCompile`) counts as failing:
+  by Go convention it panics when it fails, and a panic fails the test. A
+  `Must` helper declared in a `_test.go` file is judged by its body
+  instead.
 - `empty-subtest`: a `t.Run` literal that can neither fail nor skip, by the
   same rules. A subtest that assigns a variable of the test around it, or
   sends on a channel, is not reported: the parent checks what it did.
@@ -73,8 +78,12 @@ func TestLoad(t *testing.T) {
 Not read by `no-assert`: benchmarks, examples, fuzz targets, `TestMain`, a
 test whose parameter is `_` or unnamed (`func TestNoPanic(_ *testing.T)`
 says it only checks that the code survives), and a test or subtest with a
-comment, on the line above or inside it, saying it is for a panic, crash,
-race, hang or deadlock. Generated files are skipped.
+comment, on the line above or inside it, or a name (`TestConcurrentWrites`,
+`t.Run("no panic", ...)`), saying it is for a panic, crash, race,
+concurrency, hang or deadlock; and an `os/exec` helper process, a test
+whose first statement is `if os.Getenv(...) != "1" { return }` (or `==`):
+the test that runs it as a subprocess asserts on what it did. Generated
+files are skipped.
 
 Flags:
 
