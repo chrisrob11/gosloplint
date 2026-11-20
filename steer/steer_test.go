@@ -12,6 +12,10 @@ import (
 	"github.com/chrisrob11/gosloplint/steer"
 )
 
+func TestForwarders(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), steer.Analyzer, "forward")
+}
+
 func TestReturnChecks(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), steer.Analyzer, "fixture", "dictated", "gen", "api", "example.com/hooks")
 }
@@ -84,6 +88,22 @@ func TestDisableDropsOnlyThatCheck(t *testing.T) {
 	}
 }
 
+func TestDisableForwarders(t *testing.T) {
+	all := diagnostics(t, steer.Analyzer, "forward")
+	for _, check := range []string{steer.TwinWrapper, steer.Alias} {
+		got := diagnostics(t, steer.New(steer.Settings{Disable: []string{check}}), "forward")
+		n := 0
+		for _, d := range all {
+			if !strings.HasPrefix(d, check+":") {
+				n++
+			}
+		}
+		if len(got) != n || n == len(all) {
+			t.Errorf("disable %s: %d findings, want %d of %d", check, len(got), n, len(all))
+		}
+	}
+}
+
 func TestDisableFlag(t *testing.T) {
 	setFlag(t, "disable", "returns-any, returns-interface,returns-one-concrete,sole-implementation")
 	if got := diagnostics(t, steer.Analyzer, "fixture"); len(got) != 0 {
@@ -118,7 +138,7 @@ func TestBadSettings(t *testing.T) {
 func TestEveryMessageNamesItsCheck(t *testing.T) {
 	a := steer.New(steer.Settings{RecursionPackages: []string{"..."}})
 	seen := map[string]bool{}
-	for _, pkg := range []string{"fixture", "rec"} {
+	for _, pkg := range []string{"fixture", "rec", "forward"} {
 		for _, d := range diagnostics(t, a, pkg) {
 			check, _, _ := strings.Cut(d, ":")
 			seen[check] = true

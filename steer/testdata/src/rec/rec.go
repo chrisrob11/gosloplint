@@ -79,4 +79,4 @@ func generic[T any](xs []T) int { // want `unguarded-recursion: generic recurses
 }
 
 // callsOnly calls walk but is not in its cycle.
-func callsOnly(n *node) int { return walk(n) }
+func callsOnly(n *node) int { return 1 + walk(n) }

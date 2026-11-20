@@ -48,6 +48,9 @@ type checker struct {
 	// ifaces are the non-generic named interfaces with methods declared in
 	// the package and the packages it imports, transitively; nil until read.
 	ifaces []*types.Named
+	// generic are the generic named interfaces with methods of the same
+	// packages, read with ifaces.
+	generic []*types.Named
 	// asValue are the package's functions and methods used other than by a
 	// call, as a callback is: the type it is passed as fixes its signature.
 	asValue map[*types.Func]bool
@@ -62,7 +65,7 @@ func newChecker(pass *analysis.Pass, s Settings) *checker {
 }
 
 func (c *checker) run() {
-	c.asValue = usedAsValue(c.pass)
+	c.asValue = usedAsValue(c.pass, true)
 	c.toAPI = c.passedToAPI()
 	for _, f := range c.pass.Files {
 		if ast.IsGenerated(f) {
@@ -81,6 +84,7 @@ func (c *checker) run() {
 			return true
 		})
 	}
+	newForwarder(c).run()
 	if c.s.enabled(UnguardedRecursion) && pkgpattern.Any(c.s.RecursionPackages, c.pass.Pkg.Path()) {
 		c.recursion()
 	}
@@ -438,8 +442,9 @@ func allBlank(es []ast.Expr) bool {
 }
 
 // usedAsValue is every function and method of the package that some
-// expression uses other than as the callee of a call.
-func usedAsValue(pass *analysis.Pass) map[*types.Func]bool {
+// expression uses other than as the callee of a call, in a test file only
+// when tests is set.
+func usedAsValue(pass *analysis.Pass, tests bool) map[*types.Func]bool {
 	called := map[*ast.Ident]bool{}
 	out := map[*types.Func]bool{}
 	for _, f := range pass.Files {
@@ -460,6 +465,9 @@ func usedAsValue(pass *analysis.Pass) map[*types.Func]bool {
 		})
 	}
 	for id, obj := range pass.TypesInfo.Uses {
+		if !tests && strings.HasSuffix(pass.Fset.Position(id.Pos()).Filename, "_test.go") {
+			continue
+		}
 		if fn, ok := obj.(*types.Func); ok && !called[id] && fn.Pkg() == pass.Pkg {
 			out[fn.Origin()] = true
 		}
@@ -556,10 +564,15 @@ func (c *checker) interfaces() []*types.Named {
 				continue
 			}
 			named, ok := tn.Type().(*types.Named)
-			if !ok || named.TypeParams().Len() > 0 {
+			if !ok {
 				continue
 			}
-			if it, ok := named.Underlying().(*types.Interface); ok && it.NumMethods() > 0 {
+			if it, ok := named.Underlying().(*types.Interface); !ok || it.NumMethods() == 0 {
+				continue
+			}
+			if named.TypeParams().Len() > 0 {
+				c.generic = append(c.generic, named)
+			} else {
 				c.ifaces = append(c.ifaces, named)
 			}
 		}

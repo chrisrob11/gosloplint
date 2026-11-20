@@ -1,9 +1,9 @@
 # steer
 
 Reports the design shapes generated code keeps reaching for: results typed
-`any` or an interface, an interface with one implementation, and recursion
-with no depth bound. Each finding is prefixed with its check's name, and
-each message says what to write instead.
+`any` or an interface, an interface with one implementation, recursion
+with no depth bound, and a second name for one function. Each finding is
+prefixed with its check's name, and each message says what to write instead.
 
 Checks:
 
@@ -39,6 +39,48 @@ Checks:
   functions, in which no name says `depth`. Off by default: it runs only in
   the packages `recursion-packages` names, the ones that walk input a user
   controls.
+- `twin-wrapper`: an exported function or method whose whole body is one
+  call, or `return` of one, to the unexported function or method named for
+  it with the first letter lowercased (`Fail` and `fail`, `ResolveUncached`
+  and `resolveUncached`), passing its parameters through unchanged and in
+  order. Export the one function instead of keeping two names for it.
+- `alias`: any other function whose whole body is such a call to another
+  function of the same package, or a method's to another method of the same
+  receiver. `func IsReservedRelation(id RelationID) bool { return
+  IsReserved(id) }` is two names to keep in step: call the original.
+
+Both forwarder checks need the two signatures identical (`types.Identical`,
+parameter names aside, the callee's as the call instantiates it, so a
+generic `IsReserved[T ~int64]` called with a `RelationID` counts) and every
+argument to be the parameter in its position, the variadic one spread: a
+conversion, a constant, a reordering, or a call's results passed as the
+arguments is an adapter, not a second name. Not reported:
+
+- a call into another package (`binary.AppendVarint`), including through a
+  dot import, or through a func-typed variable or field;
+- a method calling a package function, a field's method (`c.w.flush(err)`),
+  another value's, a method promoted from an embedded field, or a method
+  expression;
+- a method with the name and signature of a method of a named interface the
+  package can see (its own and its imports', transitively): the interface
+  needs the method to exist. A generic interface's method matches on name
+  and number of parameters and results. Whether the receiver implements it
+  is not checked;
+- either function used as a value in the package's non-test files (passed,
+  stored in a field or variable, a method value): it may be needed for its
+  identity;
+- either function named by a `//go:linkname` directive or marked
+  `//go:noinline`, a wrapper whose doc has a `Deprecated:` paragraph (kept
+  for its callers), and a callee that is recursive or has no body
+  (implemented in assembly);
+- a callee in a file with a `//go:build` line, or declared again in a file
+  the build constraints leave out (`_linux.go` beside `_darwin.go`): the
+  wrapper is the portable name;
+- test files: an `export_test.go` hands an unexported function to the
+  external tests under an exported name, and a test helper may rename for
+  readability.
+
+A doc comment does not exempt a forwarder.
 
 ```go
 // Bad: the interface hides one type, and callers must assert to reach it.
