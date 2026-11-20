@@ -30,8 +30,9 @@ Analyzer in its own top-level package named for it (`emptyskip/`, `vocab/`, ...)
    line that should be reported, and cases for what must not be.
 3. **Registration.** Add it to `Analyzers()` in `gosloplint.go`, and to the plugin in `plugin/`
    (its settings, if it has flags, and the analyzer lists in `plugin/plugin_test.go`).
-4. **Docs and the example.** Add a section under "Analyzers" in the README, with its flags and
-   their golangci-lint settings, and a case in `example/` with its finding in `example/want.txt`.
+4. **Docs and the example.** Add a page `docs/analyzers/<name>.md`, with its flags and their
+   golangci-lint settings, a row in the README's analyzer table, its settings in the snippet in
+   `docs/golangci-lint.md`, and a case in `example/` with its finding in `example/want.txt`.
 
 A false positive is worse than a missed finding: a linter people learn to ignore catches nothing.
 Prefer a narrower check that is always right.
@@ -69,9 +70,9 @@ module proxy, so they need nothing else.
 
 Before tagging:
 
-- The README's golangci-lint `.custom-gcl.yml` snippet pins the plugin to a gosloplint tag
-  (`version: v0.1.0`). Bump it to the tag you are about to push, in the same PR as anything
-  else the release needs.
+- The `.custom-gcl.yml` snippets in the README and `docs/golangci-lint.md` pin the plugin to a
+  gosloplint tag (`version: v0.1.0`). Bump both to the tag you are about to push, in the same
+  PR as anything else the release needs.
 - `make release-check` validates `.goreleaser.yaml`, and `make release-snapshot` builds the
   archives into `dist/` without publishing (delete `dist/` afterwards). Both run GoReleaser
   through `go run` at the version `GORELEASER_VERSION` in the Makefile pins, one whose `go.mod`
