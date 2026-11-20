@@ -13,10 +13,12 @@ const (
 	OneConcrete        = "returns-one-concrete"
 	SoleImplementation = "sole-implementation"
 	UnguardedRecursion = "unguarded-recursion"
+	TwinWrapper        = "twin-wrapper"
+	Alias              = "alias"
 )
 
 // Checks is every check, in report order.
-var Checks = []string{ReturnsAny, ReturnsInterface, OneConcrete, SoleImplementation, UnguardedRecursion}
+var Checks = []string{ReturnsAny, ReturnsInterface, OneConcrete, SoleImplementation, UnguardedRecursion, TwinWrapper, Alias}
 
 // Settings configures an Analyzer built by New. The zero value runs every
 // check but unguarded-recursion, which runs only in RecursionPackages.
