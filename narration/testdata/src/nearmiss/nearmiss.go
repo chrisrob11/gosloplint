@@ -61,6 +61,21 @@ func Format() {}
 // Pair joins "a" and "b was renamed from c" into one reply.
 func Pair() {}
 
+// Old pads the value.
+// Deprecated: this no longer pads; it was renamed from Pad and now
+// lives in strings.
+func Old() {}
+
+// Older is kept for callers.
+//
+// Deprecated: this function no longer does anything.
+//
+// It returns at once.
+func Older() {}
+
+// Check guards an assumption: if it fails after a refactor, update the test.
+func Check() {}
+
 var s = "this now uses the cache, previously, per review" // a string literal is not a comment
 
 var _ = s

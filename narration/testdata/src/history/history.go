@@ -85,3 +85,10 @@ func Parse() {}
 
 // Halve takes a "dangling quote and was renamed from Cut. // want `renamed from`
 func Halve() {}
+
+// Shrink is deprecated.
+//
+// Deprecated: use Trim.
+//
+// Previously, it trimmed both ends. // want `"Previously,"`
+func Shrink() {}

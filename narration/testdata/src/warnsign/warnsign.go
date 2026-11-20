@@ -1,6 +1,8 @@
 // Package warnsign holds warning markers, one per declaration and more.
 package warnsign
 
+import "fmt"
+
 // One has a single marker, which is what one is for.
 //
 // WARNING: the caller must hold mu.
@@ -15,12 +17,42 @@ func Two(n int) int {
 	return n
 }
 
-// T has a marker on a field and on a method doc of its own declaration.
+// T has a marker on its doc, one on each of two fields, and two on a third:
+// each field is its own unit, apart from the type's doc.
+//
+// NOTE: T is not copied.
 type T struct {
 	// Note: zero means unlimited.
 	Limit int
-	// CAUTION: not safe for concurrent use. // want `"CAUTION:" is warning marker 2 in T`
+	// CAUTION: not safe for concurrent use.
 	mu int
+	// NOTE: zero is off.
+	//
+	// NOTE: one is on. // want `"NOTE:" is warning marker 2 in T.Mode`
+	Mode  int // ⚠ never two. // want `"⚠" is warning marker 3 in T.Mode`
+	Inner struct {
+		// NOTE: the inner field is its own unit.
+		Deep int
+		// NOTE: and so is its sibling.
+		Deeper int // NOTE: but not its line comment. // want `"NOTE:" is warning marker 2 in T.Inner.Deeper`
+	}
+}
+
+// Store is an interface whose methods are each their own unit.
+type Store interface {
+	// Get reads a row.
+	//
+	// NOTE: Get may return a stale row.
+	Get() int
+	// Put writes a row.
+	// Caution: Put does not sync.
+	Put(int)
+	// Del removes a row.
+	// NOTE: Del is idempotent.
+	// NOTE: and slow. // want `"NOTE:" is warning marker 2 in Store.Del`
+	Del()
+	// IMPORTANT: an embedded interface is a unit too.
+	fmt.Stringer
 }
 
 // Reset is its own declaration, so its one marker is its first.
@@ -39,8 +71,27 @@ func (t T) Grow() {
 const (
 	// IMPORTANT: a is first.
 	a = 1
-	// NOTE: b follows a. // want `"NOTE:" is warning marker 2 in a`
+	// NOTE: b follows a, its own unit.
 	b = 2
+	// NOTE: c is last.
+	c = 3 // NOTE: and marked twice. // want `"NOTE:" is warning marker 2 in c`
+)
+
+// The group has a marker on its doc, apart from its specs.
+//
+// NOTE: these types are kept small.
+type (
+	// U holds one marker.
+	//
+	// NOTE: U is a counter.
+	U int
+
+	// NOTE: a comment between specs belongs to the group. // want `"NOTE:" is warning marker 2 in this type group`
+
+	// V holds one too.
+	//
+	// Warning: V wraps.
+	V uint8
 )
 
 // ⚠ a section comment between declarations.
@@ -50,4 +101,4 @@ const (
 // word NOTE in the middle of a line: NOTE: is not at its start.
 func None() {}
 
-var _, _ = a, b
+var _, _, _ = a, b, c

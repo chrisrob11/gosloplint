@@ -49,8 +49,8 @@ func TestDisable(t *testing.T) {
 	if len(got) != 0 {
 		t.Errorf("-disable=history: %q, want none", got)
 	}
-	if got := diagnostics(t, narration.Analyzer, "warnsign"); len(got) != 6 {
-		t.Errorf("-disable=history over warnsign: %d findings %q, want 6", len(got), got)
+	if got := diagnostics(t, narration.Analyzer, "warnsign"); len(got) != 10 {
+		t.Errorf("-disable=history over warnsign: %d findings %q, want 10", len(got), got)
 	}
 }
 

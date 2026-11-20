@@ -22,8 +22,11 @@ Checks:
 
 - `density`: a package whose non-test, non-generated files are more than 20%
   comment lines, over their non-blank lines. A line with code and a trailing
-  comment is code. A package under 100 non-blank lines is not held to it.
-  It is reported once, on the package clause of the file with the most
+  comment is code. A header is in no count, neither comment nor code: a
+  comment above the package clause that is not its doc (a license header),
+  or any block naming a copyright or an SPDX license, so a short file under
+  a long license is not dense. A package under 100 non-blank lines is not
+  held to it. It is reported once, on the package clause of the file with the most
   comment lines, preferring a file that declares something over a `doc.go`.
 
 ```go
