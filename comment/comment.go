@@ -22,7 +22,8 @@
 //
 // The density check is per package: comment lines over the non-blank lines
 // of the package's non-test, non-generated files. A line holding code and a
-// trailing comment is code. A package smaller than DensityMinLines is not
+// trailing comment is code; a license or copyright header is in no count. A
+// package smaller than DensityMinLines is not
 // held to it, and nothing exempts a package but disabling the check. It is
 // reported once, on the package clause of the file with the most comment
 // lines, preferring a file that declares something over a doc.go.

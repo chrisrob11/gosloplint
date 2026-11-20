@@ -9,16 +9,23 @@ import (
 )
 
 // history reports each comment block of f whose prose matches a phrase, at
-// the line the earliest match starts on.
+// the line the earliest match starts on. A paragraph from a line opening
+// with Deprecated: to the next blank line is godoc's deprecation notice,
+// which says what changed by design, so it is not read.
 func history(pass *analysis.Pass, f *ast.File, phrases []*regexp.Regexp) {
 	for _, cg := range f.Comments {
 		lines := prose(f, cg)
 		var b strings.Builder
 		starts := make([]int, len(lines))
+		deprecated := false
 		for i, l := range lines {
 			starts[i] = b.Len()
-			b.WriteString(strings.Join(strings.Fields(l.text), " "))
-			b.WriteByte(' ')
+			words := strings.Fields(l.text)
+			deprecated = len(words) > 0 && (deprecated || words[0] == "Deprecated:")
+			if len(words) > 0 && !deprecated {
+				b.WriteString(strings.Join(words, " "))
+				b.WriteByte(' ')
+			}
 		}
 		text := b.String()
 		match := unquoted(text)
@@ -37,7 +44,7 @@ func history(pass *analysis.Pass, f *ast.File, phrases []*regexp.Regexp) {
 		}
 		at := 0
 		for i, s := range starts {
-			if s <= first[0] {
+			if s <= quote[0] {
 				at = i
 			}
 		}
