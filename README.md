@@ -66,7 +66,7 @@ var userID string //gosloplint:ignore emptyid an empty ID is every user
 
 The syntax is `//gosloplint:ignore <analyzer>[:<check>] <reason>`, with no
 space after `//`. `<analyzer>` is an analyzer's name; `<check>`, for
-comment, fileplace and steer, narrows it to one of their checks (the
+cannotfail, comment, fileplace, narration and steer, narrows it to one of their checks (the
 `analyzer:check` names of the [baseline](#baseline-adopting-gosloplint-on-existing-code)),
 and without it every check of the analyzer is suppressed. A directive
 covers:
@@ -204,7 +204,7 @@ compiled in, and `.golangci.yml` enables it like any other linter.
              # A file written by gosloplint baseline; see Baseline above.
              # Default: none.
              baseline: gosloplint-baseline.json
-             # Analyzers to turn off, by name. Default: none, so all eleven run.
+             # Analyzers to turn off, by name. Default: none, so all twelve run.
              disable: [testhelper]
              cannotfail:
                # Checks to turn off, and off-by-default checks to turn on.
@@ -243,6 +243,9 @@ compiled in, and `.golangci.yml` enables it like any other linter.
                exempt:
                  testname: [example.com/app/internal/sqltest/...]
                  receiver: ["*_gen.go"]
+             narration:
+               # Checks to turn off: history, warnsign.
+               disable: [warnsign]
              steer:
                # Checks to turn off.
                disable: [returns-interface]
@@ -261,8 +264,8 @@ compiled in, and `.golangci.yml` enables it like any other linter.
    ```
 
 Every finding is reported under the `gosloplint` linter, its message
-prefixed with the analyzer's name, and for cannotfail, steer, comment and
-fileplace, with the check's. Every setting is optional, and a zero number means its
+prefixed with the analyzer's name, and for cannotfail, steer, comment,
+fileplace and narration, with the check's. Every setting is optional, and a zero number means its
 default. A missing or malformed baseline file, a misspelt or unknown field,
 an unknown analyzer, check or rule, a
 blank word, a suffix of more than one word (`user_id`), a negative or
@@ -737,6 +740,73 @@ Flags:
 In golangci-lint they are `fileplace.disable`, `fileplace.enable`,
 `fileplace.tiny-lines`, `fileplace.long-lines`, `fileplace.grab-bag` and
 `fileplace.exempt`, a map from rule to a list of patterns.
+
+### narration
+
+Reports comments that narrate how the code came to be instead of saying what
+it is. "This now uses a map" tells a reader about a version of the code they
+cannot see; the history belongs in the commit message, and the comment should
+say what the code does and why.
+
+Checks:
+
+- `history`: a comment block whose prose, joined across its lines and read
+  case aside, holds a phrase of narration. Each phrase is anchored so that the
+  words alone do not report: a subject that is the code, or a change verb.
+
+  | phrase | reported | not reported |
+  |---|---|---|
+  | `this`/`this <code noun>` + `now`, `no longer`, `used to` | this now returns, this function no longer locks | the cache now holds n entries; the lock is no longer held |
+  | `this`/`this <noun>`/`the <noun>` + `was`/`has been`/`got` + changed, switched, updated, converted, renamed, moved, replaced, migrated + to/from/into/with/by/here | this function was changed to take ctx | the value was changed to new |
+  | `was`/`has been` + refactored, rewritten, reworked | the code was refactored | |
+  | `we`/`it used to` + a verb (be, return, call, take, use, ...) | it used to return a slice | the columns used to compute the hash |
+  | `now` + uses, delegates, lives, relies on, goes through | Get now uses the cache | |
+  | `we` + replaced, refactored, rewrote, reworked, renamed, switched from/to/over, used to, changed this/it/the noun to | we replaced the mutex | we change the key to lower case |
+  | `previously` opening a sentence, then a comma or a subject | Previously, it panicked | the previously stored value |
+  | after, before, since, during, in, with + the/this/... + refactor, rewrite, rework, cleanup, ending the clause | simpler after the refactor | after the rewrite rules run; after the cleanup goroutine exits |
+  | per/addressing review, requested/suggested in review, review feedback | per review | the documents waiting for review |
+  | fix(es/ed) the/a bug/issue/regression where/that/when/with | this fixes the bug where | the test for the bug where |
+  | renamed from, moved here from, formerly called/named/known as | Join was renamed from Concat | rows moved from the source table |
+  | a change verb + in/by/for + `#123`/`PR 123`, or `#123` + a change verb | added in #123, (#456) changed | see #123 for why; added in Go 1.21 |
+  | the old/previous/original + implementation, approach, code path | the old implementation | the previous value |
+  | added/introduced to fix, address, work around | added to fix a flaky test | |
+
+  The code nouns are function, func, method, type, struct, package, code,
+  test, helper, check, logic, implementation, analyzer, handler and wrapper.
+  One finding per block, at the line its earliest phrase starts on.
+
+- `warnsign`: a second warning marker in one declaration. A marker is ⚠
+  anywhere on a line, or `WARNING:`, `IMPORTANT:`, `NOTE:`, `CAUTION:`,
+  `NB:` (or `Warning:`, `Important:`, `Note:`, `Caution:`, bold or not)
+  opening one. One marker can say "a reader must not miss this"; a marker on
+  every comment marks none. So a declaration, its doc, body and fields
+  together, may hold one, and every marker after the first is reported; a
+  comment block outside every declaration is its own unit. A single marker is
+  never reported: `Note:` is ordinary Go documentation.
+
+```go
+// Bad: the comment is a changelog.
+// Get now uses the cache; previously, it went to the store (#123) changed.
+func (s *Store) Get(id string) (*Row, error)
+
+// Good: what it does, and why.
+// Get reads the cache first; a miss goes to the store and fills the cache.
+func (s *Store) Get(id string) (*Row, error)
+```
+
+Only comments are read, never string literals. Go directive lines
+(`//go:build`, `//nolint:x`, `//gosloplint:ignore`) are not prose, and a
+comment above the package clause that is not its doc (a license header, a
+build constraint's note), or any block naming a copyright or an SPDX license,
+is skipped. Generated files are skipped. Test files are read like any other:
+a test's "the bug where" or "regression for #123" says what it guards, and
+needs a change verb before it is narration.
+
+Flags:
+
+- `-narration.disable` (default empty): comma-separated checks not to run,
+  `history` and `warnsign`. In golangci-lint it is the `narration.disable`
+  setting.
 
 ### selfassert
 

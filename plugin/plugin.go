@@ -22,6 +22,7 @@ import (
 	"github.com/chrisrob11/gosloplint/internal/baseline"
 	"github.com/chrisrob11/gosloplint/internal/camel"
 	"github.com/chrisrob11/gosloplint/internal/ignore"
+	"github.com/chrisrob11/gosloplint/narration"
 	"github.com/chrisrob11/gosloplint/steer"
 	"github.com/chrisrob11/gosloplint/vocab"
 )
@@ -46,6 +47,7 @@ type Settings struct {
 	Dupl       DuplSettings       `json:"dupl"`
 	Emptyid    EmptyidSettings    `json:"emptyid"`
 	Fileplace  FileplaceSettings  `json:"fileplace"`
+	Narration  NarrationSettings  `json:"narration"`
 	Steer      SteerSettings      `json:"steer"`
 	Vocab      VocabSettings      `json:"vocab"`
 }
@@ -94,6 +96,11 @@ type FileplaceSettings struct {
 	LongLines int                 `json:"long-lines"`
 	GrabBag   []string            `json:"grab-bag"`
 	Exempt    map[string][]string `json:"exempt"`
+}
+
+// NarrationSettings mirrors narration.Settings.
+type NarrationSettings struct {
+	Disable []string `json:"disable"`
 }
 
 // SteerSettings mirrors steer.Settings.
@@ -164,7 +171,7 @@ func build(s Settings) ([]*analysis.Analyzer, error) {
 	if disabled["vocab"] && len(s.Vocab.Words) > 0 {
 		return nil, errors.New("vocab.words is set but vocab is disabled")
 	}
-	cannotfailS := cannotfail.Settings(s.Cannotfail)
+	cannotfailS, narrationS := cannotfail.Settings(s.Cannotfail), narration.Settings(s.Narration)
 	commentS, duplS, fileplaceS, steerS := commentSettings(s.Comment), dupl.Settings(s.Dupl), fileplace.Settings(s.Fileplace), steer.Settings(s.Steer)
 	for _, c := range []struct {
 		name     string
@@ -175,6 +182,7 @@ func build(s Settings) ([]*analysis.Analyzer, error) {
 		{"comment", reflect.ValueOf(s.Comment).IsZero(), commentS.Validate},
 		{"dupl", reflect.ValueOf(s.Dupl).IsZero(), duplS.Validate},
 		{"fileplace", reflect.ValueOf(s.Fileplace).IsZero(), fileplaceS.Validate},
+		{"narration", reflect.ValueOf(s.Narration).IsZero(), narrationS.Validate},
 		{"steer", reflect.ValueOf(s.Steer).IsZero(), steerS.Validate},
 	} {
 		if disabled[c.name] && !c.zero {
@@ -200,6 +208,8 @@ func build(s Settings) ([]*analysis.Analyzer, error) {
 			a = emptyid.New(emptyid.Settings{Suffixes: s.Emptyid.Suffixes})
 		case a.Name == "fileplace":
 			a = fileplace.New(fileplaceS)
+		case a.Name == "narration":
+			a = narration.New(narrationS)
 		case a.Name == "steer":
 			a = steer.New(steerS)
 		case a.Name == "vocab":

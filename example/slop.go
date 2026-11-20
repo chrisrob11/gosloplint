@@ -100,3 +100,12 @@ func Forget(userID string) error {
 	}
 	return nil
 }
+
+// Count tells the story of its last change: it now uses a running total.
+func Count(xs []int) int {
+	total := 0
+	for _, x := range xs {
+		total += x
+	}
+	return total
+}
