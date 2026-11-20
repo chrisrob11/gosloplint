@@ -40,10 +40,11 @@ func reporter(name string, categorize bool, prefixes ...string) *analysis.Analyz
 	}
 }
 
-var known = map[string][]string{"fake": {"one", "two"}, "plain": nil, "other": nil}
+var known = map[string][]string{"fake": {"one", "two", "far"}, "plain": nil, "other": nil}
 
 func TestDirectives(t *testing.T) {
-	wrapped := ignore.Wrap([]*analysis.Analyzer{reporter("fake", true, "one", "two"), reporter("plain", false, "plain")}, known)
+	wrapped := ignore.Wrap([]*analysis.Analyzer{reporter("fake", true, "one", "two"), reporter("plain", false, "plain")}, known,
+		map[string][]string{"fake": {"far"}})
 	analysistest.Run(t, analysistest.TestData(), wrapped[0], "onepkg")
 	analysistest.Run(t, analysistest.TestData(), wrapped[1], "second")
 }

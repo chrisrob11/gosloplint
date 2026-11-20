@@ -52,6 +52,31 @@ error. It takes the dupl flags, unprefixed: `-min-nodes`, `-min-statements`,
 `-tests` and `-exempt`. A copy within one package is reported both here and
 by the dupl analyzer. The package patterns default to `./...`.
 
+Each copy belongs to the package of its later copy, where it is reported. A
+copy whose earlier copy is in another package is of the check `dupl:cross`;
+one whose two copies share a package is the dupl analyzer's own, `dupl`.
+`-baseline file` holds each package to the counts of both in a
+[baseline](#baseline-adopting-gosloplint-on-existing-code) file, as the
+analyzers do: nothing while a package has no more copies of a check than
+its count, every one of them, noted, once it has more:
+
+```sh
+gosloplint baseline ./...                      # records dupl and dupl:cross
+gosloplint dupl -baseline gosloplint-baseline.json ./...
+```
+
+`//gosloplint:ignore dupl:cross <reason>` at the later copy suppresses a
+copy across packages. Plain `dupl` there suppresses it too, but the dupl
+analyzer, which never sees that copy, then reports the directive as stale;
+the analyzer accepts `dupl:cross` and never judges it, since no analysis
+pass reports that check. A `dupl:cross` directive does not suppress a copy
+within the package.
+
+This command is not part of the golangci-lint plugin. golangci-lint runs a
+plugin's analyzers one package at a time, the same limit an analysis pass
+has, so the plugin's dupl sees only copies within a package; run
+`gosloplint dupl` as its own step to gate the rest.
+
 ### Suppressing one finding: `//gosloplint:ignore`
 
 A finding that is wrong at one site is suppressed there with a directive,
@@ -66,8 +91,9 @@ var userID string //gosloplint:ignore emptyid an empty ID is every user
 
 The syntax is `//gosloplint:ignore <analyzer>[:<check>] <reason>`, with no
 space after `//`. `<analyzer>` is an analyzer's name; `<check>`, for
-cannotfail, comment, fileplace, narration and steer, narrows it to one of their checks (the
-`analyzer:check` names of the [baseline](#baseline-adopting-gosloplint-on-existing-code)),
+cannotfail, comment, dupl, fileplace, narration and steer, narrows it to one of their checks (the
+`analyzer:check` names of the [baseline](#baseline-adopting-gosloplint-on-existing-code);
+dupl's one, `cross`, is the copies across packages that only `gosloplint dupl` reports),
 and without it every check of the analyzer is suppressed. A directive
 covers:
 
@@ -97,8 +123,8 @@ Each analyzer reports the directives naming it; one naming no known
 analyzer is reported by the first analyzer of the set, comment unless the
 plugin disables it, so a run selecting analyzers by flag (`gosloplint
 -steer`) without comment leaves those unreported. Directives in generated files are not read. `gosloplint
-dupl` honours `dupl` directives too, and the baseline counts only the
-findings no directive suppresses.
+dupl` honours `dupl` and `dupl:cross` directives too, and the baseline
+counts only the findings no directive suppresses.
 
 It is implemented once, as a wrapper around every analyzer's run, so it
 works wherever gosloplint runs: the binary, `go vet -vettool`, and the
@@ -128,12 +154,18 @@ same prefixed flags as the multichecker (pass the settings your lint runs
 with, or the counts will not match), and writes a sorted JSON object keyed by
 package import path, then by check: the analyzer's name, and for an analyzer
 of several checks, `analyzer:check`. Regenerating it from the same code
-writes the same file.
+writes the same file. It also records the copies across packages that
+[`gosloplint dupl`](#copies-across-packages-gosloplint-dupl) reports, found
+with the `-dupl.` flags it is passed, as `dupl:cross` under the package of
+the later copy. A copy within one package is counted once, as `dupl`, by the
+analyzer: `gosloplint dupl -baseline` holds those against the same `dupl`
+count, so the two never count one pair twice.
 
 ```json
 {
   "example.com/app/internal/store": {
     "dupl": 2,
+    "dupl:cross": 1,
     "fileplace:tiny": 1,
     "steer:returns-interface": 3
   }
@@ -144,6 +176,7 @@ Then run with it:
 
 ```sh
 gosloplint -baseline gosloplint-baseline.json ./...
+gosloplint dupl -baseline gosloplint-baseline.json ./...
 ```
 
 For each package and check, an analyzer reports nothing while the package
@@ -551,7 +584,8 @@ func (d *Driver) replay() { /* ... */ }
 ```
 
 Scope: one package pass, so a copy between two packages is not seen; run
-[`gosloplint dupl`](#copies-across-packages-gosloplint-dupl) for those.
+[`gosloplint dupl`](#copies-across-packages-gosloplint-dupl) for those,
+whose check and baseline key is `dupl:cross`.
 
 Flags:
 

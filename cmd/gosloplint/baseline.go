@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -9,14 +10,18 @@ import (
 	"golang.org/x/tools/go/analysis/checker"
 	"golang.org/x/tools/go/packages"
 
+	"github.com/chrisrob11/gosloplint/dupl"
 	"github.com/chrisrob11/gosloplint/internal/baseline"
+	"github.com/chrisrob11/gosloplint/internal/clone"
 )
 
 const baselineUsage = `usage: gosloplint baseline [-o file] [analyzer flags] [packages]
 
 Runs every analyzer over the packages named (default ./...) and their tests,
 and writes each package's finding count per analyzer check to the file, for
--baseline to hold. Pass the analyzer flags the lint runs with. Flags:
+-baseline to hold, with the copies across packages gosloplint dupl reports,
+configured by the -dupl flags, as dupl:cross. Pass the analyzer flags the
+lint runs with. Flags:
 `
 
 // runBaseline is `gosloplint baseline`: it records the findings of
@@ -53,6 +58,19 @@ func runBaseline(analyzers []*analysis.Analyzer, args []string, stdout, stderr i
 			counts.Add(act.Package.PkgPath, k, n)
 		}
 	}
+	cfg, err := duplConfig(analyzers)
+	if err != nil {
+		return fail(err)
+	}
+	cross := map[string]int{}
+	for _, c := range duplicates(pkgs, cfg) {
+		if c.key != dupl.Analyzer.Name {
+			cross[c.pkg]++
+		}
+	}
+	for pkg, n := range cross {
+		counts.Add(pkg, baseline.Key(dupl.Analyzer.Name, analysis.Diagnostic{Category: dupl.Cross}), n)
+	}
 	for _, keys := range counts {
 		for _, n := range keys {
 			total += n
@@ -63,4 +81,20 @@ func runBaseline(analyzers []*analysis.Analyzer, args []string, stdout, stderr i
 	}
 	_, _ = fmt.Fprintf(stdout, "gosloplint baseline: %s records %d finding(s) in %d package(s)\n", *out, total, len(counts))
 	return 0
+}
+
+// duplConfig is the settings the dupl analyzer among analyzers takes from
+// its flags, the defaults without one, so the copies across packages are
+// found as the analyzer finds those within one.
+func duplConfig(analyzers []*analysis.Analyzer) (clone.Config, error) {
+	var cfg clone.Config
+	fs := flag.NewFlagSet(dupl.Analyzer.Name, flag.ContinueOnError)
+	clone.BindFlags(fs, &cfg)
+	var errs []error
+	for _, a := range analyzers {
+		if a.Name == dupl.Analyzer.Name {
+			a.Flags.VisitAll(func(f *flag.Flag) { errs = append(errs, fs.Set(f.Name, f.Value.String())) })
+		}
+	}
+	return cfg, errors.Join(errs...)
 }

@@ -51,6 +51,30 @@ func TestTheBinaryHonoursIgnore(t *testing.T) {
 	}
 }
 
+// TestTheBinaryHonoursIgnoreAcrossPackages: dupl:cross suppresses a copy
+// across packages at the later copy, is not stale to the dupl analyzer,
+// which never reports one, and leaves a copy within the package reported.
+func TestTheBinaryHonoursIgnoreAcrossPackages(t *testing.T) {
+	bin := build(t)
+	module(t)
+	const directive = "//gosloplint:ignore dupl:cross b keeps its own copy of a\n"
+	write(t, "b/b.go", strings.ReplaceAll(header, "%s", "b")+"\n"+directive+"func Second(in input) (int, error) {\n"+body)
+	if out, err := exec.Command(bin, "dupl", "./...").CombinedOutput(); exitCode(err) != 0 || len(out) != 0 {
+		t.Errorf("gosloplint dupl ./... = %d, %q, want 0: the copy is ignored", exitCode(err), out)
+	}
+	if out, err := exec.Command(bin, "-dupl", "./...").CombinedOutput(); exitCode(err) != 0 {
+		t.Errorf("gosloplint -dupl ./... = %d, %q, want 0: the directive is not stale", exitCode(err), out)
+	}
+	if out, err := exec.Command(bin, "baseline", "-o", "bl.json", "./...").CombinedOutput(); err != nil || strings.Contains(read(t, "bl.json"), "dupl") {
+		t.Errorf("gosloplint baseline ./...: %v, %q, %s: want no dupl count", err, out, read(t, "bl.json"))
+	}
+	write(t, "b/b2.go", "package b\n\n"+directive+"func Third(in input) (int, error) {\n"+body)
+	out, err := exec.Command(bin, "dupl", "./...").CombinedOutput()
+	if code := exitCode(err); code != 1 || strings.Count(string(out), "\n") != 1 || !strings.Contains(string(out), "b/b2.go:5:2: lines 5-17 duplicate lines 9-21 of b/b.go (Second)") {
+		t.Errorf("gosloplint dupl ./... = %d, %q, want 1 and only b2.go's copy of b.go", code, out)
+	}
+}
+
 func exitCode(err error) int {
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {

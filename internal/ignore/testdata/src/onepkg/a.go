@@ -53,13 +53,15 @@ var oneNoReason int // want `one: oneNoReason`
 
 //gosloplint:ignore nosuch whatever // want `ignore: //gosloplint:ignore names unknown analyzer "nosuch" \(known: fake, other, plain\)`
 
-//gosloplint:ignore fake:three no such check // want `ignore: //gosloplint:ignore fake:three: fake has no check "three" \(checks: one, two\)`
+//gosloplint:ignore fake:three no such check // want `ignore: //gosloplint:ignore fake:three: fake has no check "three" \(checks: one, two, far\)`
 var oneBadCheck int // want `one: oneBadCheck`
 
 // want +1 `ignore: //gosloplint:ignore names no analyzer`
 //gosloplint:ignore
 
 //gosloplint:ignore other other is known but does not run here, so this is not stale
+
+//gosloplint:ignore fake:far no pass reports far, so this is not stale
 
 //gosloplint:ignored is another directive, not this one
 var oneNotADirective int // want `one: oneNotADirective`

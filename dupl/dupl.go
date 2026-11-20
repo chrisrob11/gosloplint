@@ -26,6 +26,11 @@ import (
 // comment exempts the function. Without a reason it exempts nothing.
 const Directive = clone.Directive
 
+// Cross is the check of a copy across packages: `gosloplint dupl` reports
+// it, never the Analyzer, so `//gosloplint:ignore dupl:cross` suppresses it
+// at the later copy and its baseline key is dupl:cross.
+const Cross = "cross"
+
 // The defaults a zero Settings field takes.
 const (
 	DefaultMinNodes      = clone.DefaultMinNodes

@@ -23,7 +23,7 @@ import (
 )
 
 func main() {
-	analyzers := ignore.Wrap(gosloplint.Analyzers(), gosloplint.Checks())
+	analyzers := ignore.Wrap(gosloplint.Analyzers(), gosloplint.Checks(), gosloplint.Elsewhere())
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "dupl":

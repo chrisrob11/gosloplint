@@ -38,7 +38,7 @@ func TestChecksNamesEveryAnalyzer(t *testing.T) {
 	if len(checks) != len(gosloplint.Analyzers()) {
 		t.Errorf("Checks has %d entries for %d analyzers", len(checks), len(gosloplint.Analyzers()))
 	}
-	for name, want := range map[string]string{"comment": "density", "fileplace": "testname", "narration": "warnsign", "steer": "returns-interface"} {
+	for name, want := range map[string]string{"comment": "density", "dupl": "cross", "fileplace": "testname", "narration": "warnsign", "steer": "returns-interface"} {
 		if !slices.Contains(checks[name], want) {
 			t.Errorf("Checks()[%s] = %v, want it to hold %s", name, checks[name], want)
 		}
