@@ -6,8 +6,11 @@ import (
 	"github.com/chrisrob11/gosloplint/internal/camel"
 )
 
-// platforms are the GOOS and GOARCH values a file name may end in.
+// platforms are the GOOS and GOARCH values a file name may end in, and
+// unix and other, the names a file built for a group of platforms takes
+// beside them (bindcap_other.go builds where bindcap_linux.go does not).
 var platforms = map[string]bool{
+	"unix": true, "other": true,
 	"aix": true, "android": true, "darwin": true, "dragonfly": true, "freebsd": true, "hurd": true,
 	"illumos": true, "ios": true, "js": true, "linux": true, "netbsd": true, "openbsd": true,
 	"plan9": true, "solaris": true, "wasip1": true, "windows": true, "zos": true,
@@ -16,7 +19,8 @@ var platforms = map[string]bool{
 	"riscv64": true, "s390x": true, "wasm": true,
 }
 
-// dropPlatform drops up to two trailing GOOS/GOARCH parts: foo_linux_amd64 is foo.
+// dropPlatform drops up to two trailing parts of platforms: foo_linux_amd64
+// is foo.
 func dropPlatform(s string) string {
 	for range 2 {
 		i := strings.LastIndexByte(s, '_')

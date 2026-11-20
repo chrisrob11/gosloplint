@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"go/types"
 
+	"github.com/chrisrob11/gosloplint/internal/sideeffect"
 	"github.com/chrisrob11/gosloplint/internal/testapi"
 )
 
@@ -153,60 +154,15 @@ func setFacts(c *checker, s ast.Stmt, facts map[fieldKey]fieldFact) bool {
 	return true
 }
 
-// harmless reports whether s cannot change a field of facts: a simple
-// statement with no call but to a builtin or a conversion, no receive, no
-// address taken, and no assignment but to a plain variable none of facts
-// is a field of.
+// harmless reports whether s cannot change a field of facts, by the rule
+// sideeffect.Harmless holds.
 func harmless(c *checker, s ast.Stmt, facts map[fieldKey]fieldFact) bool {
-	switch s := s.(type) {
-	case *ast.ExprStmt, *ast.DeclStmt, *ast.EmptyStmt:
-	case *ast.AssignStmt:
-		for _, l := range s.Lhs {
-			id, ok := l.(*ast.Ident)
-			if !ok {
-				return false
-			}
-			for k := range facts {
-				if c.pass.TypesInfo.ObjectOf(id) == k.root {
-					return false
-				}
+	return sideeffect.Harmless(c.pass.TypesInfo, s, func(o types.Object) bool {
+		for k := range facts {
+			if o == k.root {
+				return true
 			}
 		}
-	default:
 		return false
-	}
-	ok := true
-	ast.Inspect(s, func(n ast.Node) bool {
-		if !ok {
-			return false
-		}
-		switch n := n.(type) {
-		case *ast.CallExpr:
-			ok = c.pass.TypesInfo.Types[n.Fun].IsType() || pureBuiltin(c, n)
-		case *ast.UnaryExpr:
-			ok = n.Op != token.AND && n.Op != token.ARROW
-		case *ast.FuncLit:
-			return false
-		}
-		return ok
 	})
-	return ok
-}
-
-// pureBuiltin reports whether call is to a builtin that returns a value and
-// does nothing else a test could see.
-func pureBuiltin(c *checker, call *ast.CallExpr) bool {
-	id, ok := ast.Unparen(call.Fun).(*ast.Ident)
-	if !ok {
-		return false
-	}
-	b, ok := c.pass.TypesInfo.Uses[id].(*types.Builtin)
-	if !ok {
-		return false
-	}
-	switch b.Name() {
-	case "panic", "recover", "print", "println":
-		return false
-	}
-	return true
 }

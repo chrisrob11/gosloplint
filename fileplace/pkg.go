@@ -39,6 +39,8 @@ type pkg struct {
 	spec    map[string]*ast.TypeSpec
 	methods map[string][]method
 	types   []string // the type names, in declaration order
+	// testedNames memoises testedNames.
+	testedMemo []string
 	// sources are the norm'd stems of the directory's non-test .go files,
 	// read from the directory, so an external test package sees them.
 	sources map[string]bool
@@ -217,7 +219,9 @@ func (p *pkg) anotherTypesFile(f *file, typ string) bool {
 }
 
 // namesASource reports whether a test stem names a source file of the
-// directory, alone or with one of testSuffixes.
+// directory, alone, with one of testSuffixes, or followed by an aspect:
+// root_special_test.go tests one aspect of root.go. An aspect of the file
+// named for the package is ownTest's to judge.
 func (p *pkg) namesASource(stem string) bool {
 	cands := []string{stem}
 	for _, suf := range testSuffixes {
@@ -225,13 +229,23 @@ func (p *pkg) namesASource(stem string) bool {
 			cands = append(cands, s)
 		}
 	}
+	for i := range len(stem) {
+		if pre := stem[:i]; stem[i] == '_' && norm(pre) != norm(p.name) && norm(pre) != norm(p.dirName) {
+			cands = append(cands, pre)
+		}
+	}
 	return slices.ContainsFunc(cands, func(c string) bool { return p.sources[norm(c)] })
 }
 
 // testName reports each _test.go file that names no source file of its
 // directory and no declaration of the package it tests. The package's own
-// test files and testStems, Go's conventions, are not reported.
+// test files and testStems, Go's conventions, are not reported, nor is a
+// directory with no source file: an integration suite names its tests for
+// what they exercise.
 func (p *pkg) testName() {
+	if len(p.sources) == 0 {
+		return
+	}
 	var decls []string
 	for _, f := range p.files {
 		if !f.test || f.exempt() || p.isGrabBag(f.stem) || p.namesASource(f.stem) || slices.Contains(testStems, f.stem) ||
@@ -239,7 +253,7 @@ func (p *pkg) testName() {
 			continue
 		}
 		if decls == nil {
-			decls = p.testedNames()
+			decls = p.tested()
 		}
 		if slices.ContainsFunc(variants(f.stem), func(v string) bool {
 			return slices.ContainsFunc(decls, func(n string) bool { return covers(v, n, false) })
@@ -354,6 +368,14 @@ func (p *pkg) isCommand(lit *ast.CompositeLit) bool {
 	return ok && named.Obj().Name() == "Command"
 }
 
+// tested is testedNames, computed once.
+func (p *pkg) tested() []string {
+	if p.testedMemo == nil {
+		p.testedMemo = p.testedNames()
+	}
+	return p.testedMemo
+}
+
 // testedNames are the package-level names, and the method names, that the
 // non-test files of the package under test declare: the pass's package, or
 // for an external test package, the package it imports under the path
@@ -442,9 +464,14 @@ func (p *pkg) fileName() {
 
 // isGrabBag reports whether stem has a grab-bag part that names no type of
 // the package's non-test files (types.go holding a type Types is named),
-// and is not the package's own name.
+// and is not the package's own name. A stem of two or more parts that spells
+// a declaration of the package under test uses the word as a domain term:
+// helper_config.go holds HelperConfig.
 func (p *pkg) isGrabBag(stem string) bool {
 	if norm(stem) == norm(p.name) || norm(stem) == norm(p.dirName) {
+		return false
+	}
+	if strings.Contains(stem, "_") && slices.ContainsFunc(p.tested(), func(n string) bool { return covers(norm(stem), n, false) }) {
 		return false
 	}
 	bag := p.s.grabBag()
@@ -468,7 +495,8 @@ func (p *pkg) grabBag() {
 }
 
 // tiny reports each non-test file under TinyLines that declares no type. A
-// package's only file has nowhere to fold into.
+// package's only file has nowhere to fold into, and a file built for some
+// platforms only cannot fold into a file the others build.
 func (p *pkg) tiny() {
 	code := 0
 	for _, f := range p.files {
@@ -477,7 +505,7 @@ func (p *pkg) tiny() {
 		}
 	}
 	for _, f := range p.files {
-		if code <= 1 || f.test || f.exempt() || f.lines >= p.s.tinyLines() || f.declaresType() || p.concern(f) {
+		if code <= 1 || f.test || f.exempt() || f.lines >= p.s.tinyLines() || f.declaresType() || p.concern(f) || f.platform() {
 			continue
 		}
 		fix := "fold it into the file of the type its code serves, or its only caller's file"

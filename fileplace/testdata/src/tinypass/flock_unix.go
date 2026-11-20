@@ -1,0 +1,3 @@
+package tinypass
+
+func flock() {}
